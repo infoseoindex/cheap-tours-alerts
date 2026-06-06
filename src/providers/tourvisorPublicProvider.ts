@@ -71,6 +71,14 @@ export class TourvisorPublicProvider implements TourProvider {
         availabilityText: shortAvailability.text
       };
     }
+    const detailedAvailability = await this.resolveDetailedAvailability(tourId, deal.price.currency, shortId);
+    if (detailedAvailability?.isAvailable === false) {
+      return {
+        ...deal,
+        isAvailable: false,
+        availabilityText: detailedAvailability.text
+      };
+    }
 
     const hotelName = stringFrom(tour.hotelname) ?? deal.hotelName;
     const tourName = stringFrom(tour.tourname);
@@ -103,15 +111,6 @@ export class TourvisorPublicProvider implements TourProvider {
         client
       }
     };
-
-    const browserAvailability = await verifyTourPageAvailability(resolved.url);
-    if (browserAvailability.isAvailable === false) {
-      return {
-        ...resolved,
-        isAvailable: false,
-        availabilityText: browserAvailability.text
-      };
-    }
 
     return resolved;
   }
@@ -289,6 +288,63 @@ export class TourvisorPublicProvider implements TourProvider {
     const tour = recordFrom(data?.tour);
     const client = recordFrom(data?.client);
     return availabilityFromModact(data, tour, client);
+  }
+
+  private async resolveDetailedAvailability(
+    tourId: string,
+    currency: Currency,
+    shortId: string | undefined
+  ): Promise<{ isAvailable?: boolean; text?: string } | undefined> {
+    const url = new URL("https://tourvisor.ru/xml/modact.php");
+    url.searchParams.set("currency", mapCurrency(currency));
+    url.searchParams.set("detailed", "1");
+    url.searchParams.set("tourid", tourId);
+    url.searchParams.set("referrer", shortId ? `https://tourvisor.ru/t/${shortId}` : "https://tourvisor.ru/search.php");
+    url.searchParams.set("session", "");
+
+    const response = await this.fetchWithSession(url, {
+        accept: "application/json,text/plain,*/*",
+        referer: shortId ? `https://tourvisor.ru/t/${shortId}` : "https://tourvisor.ru/search.php",
+        "user-agent": "tour-deals-bot/0.1"
+    });
+    if (!response.ok) return undefined;
+
+    const payload = await response.json();
+    const data = recordFrom(recordFrom(payload)?.data);
+    if (!data) {
+      return {
+        isAvailable: false,
+        text: "Тур продан: detailed data is missing"
+      };
+    }
+
+    const error = data.error;
+    if (error === undefined) {
+      return {
+        isAvailable: false,
+        text: "Тур продан: detailed error status is missing"
+      };
+    }
+
+    const errorRecord = recordFrom(error);
+    if (errorRecord) {
+      return {
+        isAvailable: false,
+        text: stringFrom(errorRecord.errormessage) ?? stringFrom(errorRecord.message) ?? `Tourvisor detailed error ${stringFrom(errorRecord.code) ?? ""}`.trim()
+      };
+    }
+
+    if (error !== false) {
+      return {
+        isAvailable: false,
+        text: "Tourvisor detailed check failed"
+      };
+    }
+
+    return {
+      isAvailable: true,
+      text: "Заявка на тур доступна"
+    };
   }
 }
 
@@ -648,49 +704,6 @@ function buildTourUrl(searchLink: string | undefined, shortId: string | undefine
     return url.toString();
   } catch {
     return rawUrl;
-  }
-}
-
-async function verifyTourPageAvailability(url: string): Promise<{ isAvailable?: boolean; text?: string }> {
-  let browser: Awaited<ReturnType<typeof import("playwright").chromium.launch>> | undefined;
-
-  try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-dev-shm-usage"]
-    });
-    const page = await browser.newPage({ locale: "ru-RU" });
-    await page.route("**/*", (route) => {
-      const type = route.request().resourceType();
-      if (type === "image" || type === "font" || type === "media") {
-        return route.abort();
-      }
-      return route.continue();
-    });
-
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await page.waitForTimeout(10_000);
-    const text = await page.locator("body").innerText({ timeout: 5_000 }).catch(() => "");
-
-    if (/тур\s+продан|sold\s+tour|tour\s+sold/i.test(text)) {
-      return {
-        isAvailable: false,
-        text: "Тур продан на странице Tourvisor"
-      };
-    }
-
-    return {
-      isAvailable: true,
-      text: "Заявка на тур доступна"
-    };
-  } catch (error) {
-    return {
-      isAvailable: false,
-      text: `Не удалось проверить страницу Tourvisor: ${error instanceof Error ? error.message : "unknown error"}`
-    };
-  } finally {
-    await browser?.close().catch(() => undefined);
   }
 }
 

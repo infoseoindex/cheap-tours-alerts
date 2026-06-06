@@ -224,10 +224,22 @@ This mirrors the first request made by the public `/t/<shortId>` page. If this
 shortid flow says sold or unavailable, skip the alert even if the long tour id
 looked available.
 
-API checks are not enough on their own. Before sending a deal alert, open the
-final Tourvisor link in headless Chromium and inspect visible page text. If the
-page contains `тур продан`, `sold tour`, or `tour sold`, skip the alert. Browser
-check failures should fail closed to avoid sold-tour spam.
+The public page makes an additional detailed request before rendering the final
+card:
+
+```text
+https://tourvisor.ru/xml/modact.php?currency=<code>&detailed=1&tourid=<tourId>&referrer=https://tourvisor.ru/t/<shortId>&session=
+```
+
+Tourvisor JS marks the card as sold/unavailable if this detailed response does
+not contain an object `data` with a defined `data.error`, or if `data.error` is
+an error object. A known sold-card response is:
+
+```json
+{"debug":{"acttimediff":162},"data":"proxy address undefined"}
+```
+
+The bot should use this detailed HTTP check instead of browser page scraping.
 
 Tourvisor public `/t/<shortId>` pages may still display some prices and filters
 in RUB even when the tour itself was found in USD/EUR; URL query parameters such

@@ -38,6 +38,7 @@ export class Worker {
       `Running now: ${this.running ? "yes" : "no"}`,
       `Notifications: ${this.paused ? "off" : "on, automatic scan is enabled"}`,
       `Active presets: ${active}`,
+      `Subscribers: ${this.storage.listActiveSubscriberChatIds().length}`,
       `Interval: ${this.getIntervalSeconds()}s`,
       `Alerts per check: ${this.storage.getMaxAlertsPerCheck(10) || "unlimited"}`,
       `No-deal reports: ${this.storage.getNoDealReportsEnabled(true) ? `on, every ${this.storage.getNoDealReportIntervalSeconds(3600)}s` : "off"}`,

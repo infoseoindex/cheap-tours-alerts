@@ -3,6 +3,13 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { SearchPreset, TourDeal } from "./types.js";
 
+interface SubscriberInput {
+  chatId: string;
+  username?: string;
+  firstName?: string;
+  languageCode?: string;
+}
+
 export class Storage {
   private readonly db: Database.Database;
 
@@ -128,6 +135,36 @@ export class Storage {
       .all(limit) as Array<{ title: string; url: string; sent_at: string; reasons_json: string }>;
   }
 
+  upsertSubscriber(input: SubscriberInput): void {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `insert into subscribers(
+          chat_id, username, first_name, language_code, active, created_at, updated_at
+        ) values(?, ?, ?, ?, 1, ?, ?)
+        on conflict(chat_id) do update set
+          username = excluded.username,
+          first_name = excluded.first_name,
+          language_code = excluded.language_code,
+          active = 1,
+          updated_at = excluded.updated_at`
+      )
+      .run(input.chatId, input.username ?? "", input.firstName ?? "", input.languageCode ?? "", now, now);
+  }
+
+  deactivateSubscriber(chatId: string): void {
+    this.db
+      .prepare("update subscribers set active = 0, updated_at = ? where chat_id = ?")
+      .run(new Date().toISOString(), chatId);
+  }
+
+  listActiveSubscriberChatIds(): string[] {
+    const rows = this.db
+      .prepare("select chat_id from subscribers where active = 1 order by created_at")
+      .all() as Array<{ chat_id: string }>;
+    return rows.map((row) => row.chat_id);
+  }
+
   close(): void {
     this.db.close();
   }
@@ -172,6 +209,16 @@ export class Storage {
         reasons_json text not null,
         sent_at text not null,
         unique(preset_id, deal_id)
+      );
+
+      create table if not exists subscribers (
+        chat_id text primary key,
+        username text not null default '',
+        first_name text not null default '',
+        language_code text not null default '',
+        active integer not null default 1,
+        created_at text not null,
+        updated_at text not null
       );
     `);
   }

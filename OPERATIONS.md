@@ -87,6 +87,7 @@ Do not leave important operational knowledge only in chat. If another chat/sessi
 
 The bot supports:
 
+- `/start` for subscribing any Telegram user to deal alerts
 - `/menu`
 - `/settings`
 - `/status`
@@ -94,6 +95,15 @@ The bot supports:
 - `/pause`
 - `/resume`
 - `/last`
+- `/stop` for unsubscribing from deal alerts
+
+Access model:
+
+- Any user can open `https://t.me/CheapToursAlertsBot` and press Start to subscribe.
+- Deal alerts are broadcast to active subscribers plus the admin chat.
+- Search settings, manual checks, status, pause/resume, and last-alert history are admin-only.
+- No-deal reports are admin-only; public subscribers should receive real deal alerts, not heartbeat reports.
+- Subscribers are stored in SQLite table `subscribers`.
 
 Editable from menu:
 
@@ -403,6 +413,7 @@ systemctl status cheap-tours-alerts --no-pager
 - Rotate the Telegram token if it was exposed in chat or logs.
 - Keep GitHub deploy key scoped to this repository only.
 - Do not commit SQLite database unless explicitly making a private operational backup.
+- Bot avatar is changed manually through BotFather: `/setuserpic`, select `@CheapToursAlertsBot`, upload the prepared image asset.
 
 ## If Another Chat Continues This Work
 

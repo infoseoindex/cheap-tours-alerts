@@ -43,7 +43,8 @@ export class TelegramNotifier {
       { command: "status", description: "Статус / Status" },
       { command: "check", description: "Проверить сейчас / Check now" },
       { command: "pause", description: "Пауза / Pause" },
-      { command: "resume", description: "Старт / Resume" }
+      { command: "resume", description: "Старт / Resume" },
+      { command: "stop", description: "Unsubscribe" }
     ]);
     await this.bot.launch();
   }
@@ -79,10 +80,7 @@ export class TelegramNotifier {
     const buttons = [[Markup.button.url("🔎 Открыть тур / Open tour", deal.url)]];
     if (bookingLink) buttons.push([Markup.button.url("🧾 Оформить / Book", bookingLink)]);
 
-    await this.bot.telegram.sendMessage(this.adminChatId, lines.join("\n"), {
-      parse_mode: "HTML",
-      ...Markup.inlineKeyboard(buttons)
-    });
+    await this.sendToDealSubscribers(lines.join("\n"), Markup.inlineKeyboard(buttons));
   }
 
   async sendNoDealReport(
@@ -123,9 +121,19 @@ export class TelegramNotifier {
 
   private registerCommands(): void {
     this.bot.start(async (ctx) => {
-      if (!this.isAdmin(ctx)) return;
+      await this.subscribeCurrentChat(ctx);
+      if (!this.isAdmin(ctx)) {
+        await ctx.reply("Alerts enabled. You will receive cheap tour alerts. Search settings are admin-only. Use /stop to unsubscribe.");
+        return;
+      }
       await ctx.reply("🧭 Cheap Tours Alerts готов / ready", replyKeyboard());
       await ctx.reply("Выберите действие / Choose an action", mainKeyboard());
+    });
+
+    this.bot.command("stop", async (ctx) => {
+      const chatId = String(ctx.chat?.id ?? "");
+      if (chatId) this.storage.deactivateSubscriber(chatId);
+      await ctx.reply("Alerts disabled. Use /start to subscribe again.");
     });
 
     this.bot.command("menu", async (ctx) => {
@@ -511,6 +519,45 @@ export class TelegramNotifier {
   private isAdmin(ctx: Context): boolean {
     return String(ctx.chat?.id ?? "") === this.adminChatId;
   }
+
+  private async subscribeCurrentChat(ctx: Context): Promise<void> {
+    if (!ctx.chat) return;
+    this.storage.upsertSubscriber({
+      chatId: String(ctx.chat.id),
+      username: ctx.from?.username,
+      firstName: ctx.from?.first_name,
+      languageCode: ctx.from?.language_code
+    });
+  }
+
+  private dealSubscriberChatIds(): string[] {
+    return Array.from(new Set([this.adminChatId, ...this.storage.listActiveSubscriberChatIds()]));
+  }
+
+  private async sendToDealSubscribers(
+    text: string,
+    keyboard: ReturnType<typeof Markup.inlineKeyboard>
+  ): Promise<void> {
+    for (const chatId of this.dealSubscriberChatIds()) {
+      try {
+        await this.bot.telegram.sendMessage(chatId, text, {
+          parse_mode: "HTML",
+          ...keyboard
+        });
+      } catch (error) {
+        console.error(`Failed to send deal alert to chat ${chatId}`, error);
+        if (telegramErrorCode(error) === 403) {
+          this.storage.deactivateSubscriber(chatId);
+        }
+      }
+    }
+  }
+}
+
+function telegramErrorCode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const response = (error as { response?: { error_code?: number } }).response;
+  return response?.error_code;
 }
 
 function mainKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {

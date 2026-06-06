@@ -49,7 +49,7 @@ export class TourvisorPublicProvider implements TourProvider {
     const tour = recordFrom(data?.tour);
     if (!tour) return deal;
     const client = recordFrom(data?.client);
-    const availability = availabilityFromClient(client);
+    const availability = availabilityFromModact(data, tour, client);
 
     const share = recordFrom(tour.share);
     const searchLink = stringFrom(share?.searchlink);
@@ -487,7 +487,18 @@ function statusFrom(payload: unknown): { progress?: number; finished?: number } 
   };
 }
 
-function availabilityFromClient(client: Record<string, unknown> | undefined): { isAvailable?: boolean; text?: string } {
+function availabilityFromModact(
+  data: Record<string, unknown> | undefined,
+  tour: Record<string, unknown> | undefined,
+  client: Record<string, unknown> | undefined
+): { isAvailable?: boolean; text?: string } {
+  if (booleanish(data?.sold) || booleanish(tour?.sold) || booleanish(tour?.notour)) {
+    return {
+      isAvailable: false,
+      text: "Тур продан"
+    };
+  }
+
   if (!client) return {};
 
   const showRequest = booleanish(client.showrequest);

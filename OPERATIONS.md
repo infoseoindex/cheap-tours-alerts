@@ -204,11 +204,15 @@ Notifications should use the short link from:
 data.tour.share.searchlink
 ```
 
-Example:
+But the short `/t/<id>` link can become obsolete quickly. Always append the
+long Tourvisor `tourid` that was checked through `modact.php`:
 
 ```text
-https://tourvisor.ru/t/7064733404
+https://tourvisor.ru/t/<shortId>#tvtourid=<longTourId>
 ```
+
+If `modact.php` returns `error.errormessage`, especially `Wrong (obsolete)
+TourID`, the deal must be treated as unavailable and skipped.
 
 ## Sold Tour Filtering
 
@@ -219,6 +223,7 @@ Before sending a deal, the worker resolves it via `modact.php`. A deal is skippe
 - `data.sold`
 - `data.tour.sold`
 - `data.tour.notour`
+- `error.errormessage` from `modact.php`
 
 This mirrors Tourvisor frontend behavior: their JS switches the card to `SOLD_TOUR` when `data.sold` is present.
 

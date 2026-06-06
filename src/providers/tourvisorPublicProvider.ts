@@ -45,6 +45,15 @@ export class TourvisorPublicProvider implements TourProvider {
     if (!response.ok) return deal;
 
     const payload = await response.json();
+    const errorText = errorTextFrom(payload);
+    if (errorText) {
+      return {
+        ...deal,
+        isAvailable: false,
+        availabilityText: errorText
+      };
+    }
+
     const data = recordFrom(recordFrom(payload)?.data);
     const tour = recordFrom(data?.tour);
     if (!tour) return deal;
@@ -75,7 +84,7 @@ export class TourvisorPublicProvider implements TourProvider {
         amount: numberFrom(tour.price) ?? deal.price.amount,
         currency: currencyFrom(tour.currency) ?? deal.price.currency
       },
-      url: searchLink ?? (shortId ? `https://tourvisor.ru/t/${shortId}` : deal.url),
+      url: buildTourUrl(searchLink, shortId, tourId, deal.url),
       raw: {
         ...(recordFrom(deal.raw) ?? {}),
         id: tourId,
@@ -579,6 +588,24 @@ function buildSearchUrl(preset: SearchPreset): string {
     url.searchParams.set("currency", mapCurrency(preset.budget.currency));
   }
   return url.toString();
+}
+
+function buildTourUrl(searchLink: string | undefined, shortId: string | undefined, tourId: string, fallback: string): string {
+  const rawUrl = searchLink ?? (shortId ? `https://tourvisor.ru/t/${shortId}` : fallback);
+
+  try {
+    const url = new URL(rawUrl, "https://tourvisor.ru");
+    url.hash = `tvtourid=${tourId}`;
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function errorTextFrom(payload: unknown): string | undefined {
+  const root = recordFrom(payload);
+  const error = recordFrom(root?.error) ?? recordFrom(recordFrom(root?.data)?.error);
+  return stringFrom(error?.errormessage) ?? stringFrom(error?.message);
 }
 
 function stringFrom(value: unknown): string | undefined {

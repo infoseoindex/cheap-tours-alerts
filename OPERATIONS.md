@@ -222,6 +222,14 @@ Before sending a deal, the worker resolves it via `modact.php`. A deal is skippe
 
 This mirrors Tourvisor frontend behavior: their JS switches the card to `SOLD_TOUR` when `data.sold` is present.
 
+Do not send synthetic operator-minimum rows as deal alerts. They look like:
+
+```text
+operator-min:<requestId>:<operatorId>
+```
+
+These rows contain only an operator minimum price, not a concrete tour card. They cannot be reliably checked for sold/available status and should only be used as background market context or no-deal report data.
+
 If sold tours still arrive, inspect the exact `tourid` with:
 
 ```bash

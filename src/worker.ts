@@ -69,6 +69,10 @@ export class Worker {
     let goodFound = false;
 
     for (const deal of deals) {
+      if (this.isSyntheticDeal(deal)) {
+        continue;
+      }
+
       const decision = this.rules.evaluate(preset, deal);
       this.storage.savePrice(preset.id, deal, decision.priceRub);
 
@@ -133,6 +137,10 @@ export class Worker {
       const haystack = normalizeHotelName([deal.hotelName, deal.title].filter(Boolean).join(" "));
       return names.some((name) => haystack.includes(name));
     });
+  }
+
+  private isSyntheticDeal(deal: TourDeal): boolean {
+    return deal.externalId.startsWith("operator-min:");
   }
 
   private scheduleNext(delayMs: number): void {

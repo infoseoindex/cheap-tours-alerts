@@ -57,6 +57,32 @@ git config core.sshCommand
 - Do not spam blindly: use `max_alerts_per_check` and no-deal report interval.
 - No-deal reports are useful to prove the bot is alive, but they should be configurable.
 
+## Daily Handoff Rule
+
+At the end of each working day or meaningful work session, update this file before stopping.
+
+Always record:
+
+- new decisions and product rules;
+- changed Tourvisor endpoints, parameters, IDs, or currency mappings;
+- new Telegram controls or changed input formats;
+- bugs found and how they were fixed;
+- open issues that still need checking;
+- deploy, restore, or GitHub changes;
+- current production state if it changed.
+
+Then commit and push the documentation together with the code changes:
+
+```bash
+cd /root/cheap-tours-alerts
+git status --short
+git add .
+git commit -m 'Update operations notes'
+git push
+```
+
+Do not leave important operational knowledge only in chat. If another chat/session starts tomorrow, `OPERATIONS.md` must be enough to understand what happened and how to continue safely.
+
 ## Current Telegram Settings
 
 The bot supports:

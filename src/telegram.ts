@@ -172,7 +172,7 @@ export class TelegramNotifier {
       const action = ctx.match[1];
       await ctx.answerCbQuery();
 
-      if (action === "settings") return this.sendSettings(ctx);
+      if (action === "settings" || action === "preset") return this.sendSettings(ctx);
       if (action === "check") return this.runManualCheck(ctx);
       if (action === "status") return ctx.reply(this.getStatus(), mainKeyboard());
       if (action === "pause") {
@@ -481,7 +481,7 @@ export class TelegramNotifier {
   }
 
   private async handleMenuText(ctx: Context, text: string): Promise<void> {
-    if (text.includes("Настройки") || text.includes("Settings")) {
+    if (text.includes("Текущий поиск") || text.includes("Current search") || text.includes("Настройки") || text.includes("Settings")) {
       await this.sendSettings(ctx);
       return;
     }
@@ -511,6 +511,7 @@ export class TelegramNotifier {
 
 function mainKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
   return Markup.inlineKeyboard([
+    [Markup.button.callback("🧭 Текущий поиск", "menu:preset")],
     [Markup.button.callback("⚙️ Настройки", "menu:settings"), Markup.button.callback("🔎 Проверить", "menu:check")],
     [Markup.button.callback("📊 Статус", "menu:status")],
     [Markup.button.callback("⏸ Пауза", "menu:pause"), Markup.button.callback("▶️ Старт", "menu:resume")]
@@ -519,6 +520,7 @@ function mainKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
 
 function replyKeyboard(): ReturnType<typeof Markup.keyboard> {
   return Markup.keyboard([
+    ["🧭 Текущий поиск"],
     ["⚙️ Настройки", "🔎 Проверить"],
     ["📊 Статус", "⏸ Пауза", "▶️ Старт"]
   ]).resize();
@@ -528,6 +530,8 @@ function isMenuText(text: string): boolean {
   return (
     text.includes("Настройки") ||
     text.includes("Settings") ||
+    text.includes("Текущий поиск") ||
+    text.includes("Current search") ||
     text.includes("Проверить") ||
     text.includes("Check") ||
     text.includes("Статус") ||

@@ -97,6 +97,7 @@ The bot supports:
 
 Editable from menu:
 
+- current search summary;
 - departure city
 - country
 - resort or whole country

@@ -224,6 +224,18 @@ This mirrors the first request made by the public `/t/<shortId>` page. If this
 shortid flow says sold or unavailable, skip the alert even if the long tour id
 looked available.
 
+API checks are not enough on their own. Before sending a deal alert, open the
+final Tourvisor link in headless Chromium and inspect visible page text. If the
+page contains `тур продан`, `sold tour`, or `tour sold`, skip the alert. Browser
+check failures should fail closed to avoid sold-tour spam.
+
+Tourvisor public `/t/<shortId>` pages may still display some prices and filters
+in RUB even when the tour itself was found in USD/EUR; URL query parameters such
+as `?currency=5` do not reliably change that first public-page request. Keep the
+bot message price in the preset currency and include a direct booking/operator
+button when `data.tour.share.operatorlink` or `data.client.bookcenters[].link`
+is available.
+
 ## Sold Tour Filtering
 
 Sold tours are not useful and must not be sent.

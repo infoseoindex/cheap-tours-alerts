@@ -76,7 +76,7 @@ export class TourvisorPublicProvider implements TourProvider {
     const tourName = stringFrom(tour.tourname);
     const room = stringFrom(tour.room) ?? rawString(deal.raw, "room");
 
-    return {
+    const resolved: TourDeal = {
       ...deal,
       title: hotelName ? `${hotelName}${tourName ? ` / ${tourName}` : ""}` : deal.title,
       hotelName,
@@ -103,6 +103,17 @@ export class TourvisorPublicProvider implements TourProvider {
         client
       }
     };
+
+    const browserAvailability = await verifyTourPageAvailability(resolved.url);
+    if (browserAvailability.isAvailable === false) {
+      return {
+        ...resolved,
+        isAvailable: false,
+        availabilityText: browserAvailability.text
+      };
+    }
+
+    return resolved;
   }
 
   private async startSearch(preset: SearchPreset): Promise<string> {
@@ -637,6 +648,49 @@ function buildTourUrl(searchLink: string | undefined, shortId: string | undefine
     return url.toString();
   } catch {
     return rawUrl;
+  }
+}
+
+async function verifyTourPageAvailability(url: string): Promise<{ isAvailable?: boolean; text?: string }> {
+  let browser: Awaited<ReturnType<typeof import("playwright").chromium.launch>> | undefined;
+
+  try {
+    const { chromium } = await import("playwright");
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-dev-shm-usage"]
+    });
+    const page = await browser.newPage({ locale: "ru-RU" });
+    await page.route("**/*", (route) => {
+      const type = route.request().resourceType();
+      if (type === "image" || type === "font" || type === "media") {
+        return route.abort();
+      }
+      return route.continue();
+    });
+
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.waitForTimeout(10_000);
+    const text = await page.locator("body").innerText({ timeout: 5_000 }).catch(() => "");
+
+    if (/тур\s+продан|sold\s+tour|tour\s+sold/i.test(text)) {
+      return {
+        isAvailable: false,
+        text: "Тур продан на странице Tourvisor"
+      };
+    }
+
+    return {
+      isAvailable: true,
+      text: "Заявка на тур доступна"
+    };
+  } catch (error) {
+    return {
+      isAvailable: false,
+      text: `Не удалось проверить страницу Tourvisor: ${error instanceof Error ? error.message : "unknown error"}`
+    };
+  } finally {
+    await browser?.close().catch(() => undefined);
   }
 }
 

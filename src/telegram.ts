@@ -56,6 +56,7 @@ export class TelegramNotifier {
     const room = rawString(deal.raw, "room");
     const tourId = rawString(deal.raw, "id");
     const hotelId = rawString(deal.raw, "hotelId");
+    const bookingLink = bookingLinkFromRaw(deal.raw);
     const lines = [
       `🔥 Deal: ${escapeHtml(preset.title)}`,
       "",
@@ -75,9 +76,12 @@ export class TelegramNotifier {
       ...reasons.map((reason) => `✅ ${escapeHtml(reason)}`)
     ].filter(Boolean);
 
+    const buttons = [[Markup.button.url("🔎 Открыть тур / Open tour", deal.url)]];
+    if (bookingLink) buttons.push([Markup.button.url("🧾 Оформить / Book", bookingLink)]);
+
     await this.bot.telegram.sendMessage(this.adminChatId, lines.join("\n"), {
       parse_mode: "HTML",
-      ...Markup.inlineKeyboard([Markup.button.url("🔎 Открыть тур / Open tour", deal.url)])
+      ...Markup.inlineKeyboard(buttons)
     });
   }
 
@@ -577,6 +581,31 @@ function rawString(raw: unknown, key: string): string | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const value = (raw as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function bookingLinkFromRaw(raw: unknown): string | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+
+  const share = record.share;
+  const shareOperatorLink = rawString(share, "operatorlink");
+  if (shareOperatorLink) return shareOperatorLink;
+
+  const client = record.client;
+  if (!client || typeof client !== "object" || Array.isArray(client)) return undefined;
+
+  const clientOperatorLink = rawString(client, "operatorlink");
+  if (clientOperatorLink) return clientOperatorLink;
+
+  const bookcenters = (client as Record<string, unknown>).bookcenters;
+  if (!Array.isArray(bookcenters)) return undefined;
+
+  for (const item of bookcenters) {
+    const link = rawString(item, "link");
+    if (link) return link;
+  }
+
+  return undefined;
 }
 
 function normalizeDate(value: string): string | undefined {

@@ -1,16 +1,20 @@
-# Tour Deals Telegram Bot
+# Cheap Tours Alerts Telegram Bot
 
-MVP worker for cheap vacation tour alerts from Tourvisor-style sources.
+Telegram bot for cheap vacation tour alerts from Tourvisor public search.
 
 ## What It Does
 
 - checks configured searches every 1-5 minutes;
 - filters by departure city, country/resort, dates, nights, adults/children, budget, meal and hotel stars;
+- supports whole-country or specific-resort monitoring;
+- supports optional hotel-name filters;
 - supports budgets in RUB, USD and EUR;
 - alerts when a tour is under budget or at least N% cheaper than its stored baseline;
-- deduplicates already sent tour alerts;
+- sends current matching variants every scan because tours can become unavailable quickly;
+- filters out sold Tourvisor deals before notifying;
+- can send configurable no-deal reports with the current minimum;
 - stores price history in SQLite;
-- sends Telegram messages with a direct tour link.
+- sends Telegram messages with a direct `/t/...` Tourvisor link.
 
 ## Recommended Architecture
 
@@ -48,23 +52,15 @@ The bot supports:
 
 ## Tourvisor Provider
 
-The production-preferred path is the official Tourvisor XML/API gateway. Tourvisor publishes paid API products for search and hot tours, so the exact search endpoint and required IDs should come from their support/account docs.
-
-Set:
+Current production provider:
 
 ```env
-PROVIDER=tourvisor-api
-TOURVISOR_API_BASE_URL=...
-TOURVISOR_API_KEY=...
+PROVIDER=tourvisor-public
+TOURVISOR_MODSEARCH_URL=https://tourvisor.ru/xml/modsearch.php
+TOURVISOR_MODRESULT_URL=https://search3.tourvisor.ru/modresult.php
 ```
 
-If you later decide to use browser collection, switch to:
-
-```env
-PROVIDER=tourvisor-browser
-```
-
-Then complete the selector mapping in `src/providers/tourvisorBrowserProvider.ts` after capturing the live search page/network responses.
+Operational details, restore steps, and current project rules live in `OPERATIONS.md`.
 
 ## Search Presets
 
@@ -93,8 +89,15 @@ Edit `SEARCH_PRESETS_JSON` in `.env`. Example:
 ]
 ```
 
-## Next Step
+## Operations
 
-After you get Tourvisor API access or capture one real search response from the browser Network tab, fill the exact parameter mapping in `src/providers/tourvisorApiProvider.ts`. The rest of the worker is already isolated from that detail.
+Read `OPERATIONS.md` before continuing this project from another chat/session. It documents:
 
-Russian capture checklist: `TOURVISOR_CAPTURE_RU.md`.
+- server paths;
+- systemd service;
+- GitHub backup;
+- deploy commands;
+- Tourvisor IDs;
+- sold-tour filtering;
+- validation rules;
+- restore-from-scratch flow.

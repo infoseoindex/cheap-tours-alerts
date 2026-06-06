@@ -63,6 +63,15 @@ export class TourvisorPublicProvider implements TourProvider {
     const share = recordFrom(tour.share);
     const searchLink = stringFrom(share?.searchlink);
     const shortId = stringFrom(tour.shortid);
+    const shortAvailability = shortId ? await this.resolveShortAvailability(shortId) : undefined;
+    if (shortAvailability?.isAvailable === false) {
+      return {
+        ...deal,
+        isAvailable: false,
+        availabilityText: shortAvailability.text
+      };
+    }
+
     const hotelName = stringFrom(tour.hotelname) ?? deal.hotelName;
     const tourName = stringFrom(tour.tourname);
     const room = stringFrom(tour.room) ?? rawString(deal.raw, "room");
@@ -240,6 +249,35 @@ export class TourvisorPublicProvider implements TourProvider {
     return Array.from(this.cookies.entries())
       .map(([name, value]) => `${name}=${value}`)
       .join("; ");
+  }
+
+  private async resolveShortAvailability(shortId: string): Promise<{ isAvailable?: boolean; text?: string } | undefined> {
+    const url = new URL("https://tourvisor.ru/xml/modact.php");
+    url.searchParams.set("currency", "0");
+    url.searchParams.set("shortid", shortId);
+    url.searchParams.set("referrer", `https://tourvisor.ru/t/${shortId}`);
+    url.searchParams.set("session", "");
+
+    const response = await this.fetchWithSession(url, {
+        accept: "application/json,text/plain,*/*",
+        referer: `https://tourvisor.ru/t/${shortId}`,
+        "user-agent": "tour-deals-bot/0.1"
+    });
+    if (!response.ok) return undefined;
+
+    const payload = await response.json();
+    const errorText = errorTextFrom(payload);
+    if (errorText) {
+      return {
+        isAvailable: false,
+        text: errorText
+      };
+    }
+
+    const data = recordFrom(recordFrom(payload)?.data);
+    const tour = recordFrom(data?.tour);
+    const client = recordFrom(data?.client);
+    return availabilityFromModact(data, tour, client);
   }
 }
 

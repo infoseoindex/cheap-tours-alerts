@@ -110,10 +110,14 @@ export class Worker {
       if (!best || deal.price.amount < best.price.amount) return deal;
       return best;
     }, undefined);
+    const resolvedMinDeal =
+      minDeal && !this.isSyntheticDeal(minDeal) && this.provider.resolveDealLink
+        ? await this.provider.resolveDealLink(minDeal)
+        : minDeal;
 
     await this.notifier.sendNoDealReport(preset, {
       checkedDeals: marketDeals.length,
-      minDeal
+      minDeal: resolvedMinDeal?.isAvailable === false ? undefined : resolvedMinDeal
     });
     this.storage.setLastNoDealReportAt(preset.id, new Date());
   }

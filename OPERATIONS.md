@@ -214,6 +214,16 @@ https://tourvisor.ru/t/<shortId>#tvtourid=<longTourId>
 If `modact.php` returns `error.errormessage`, especially `Wrong (obsolete)
 TourID`, the deal must be treated as unavailable and skipped.
 
+After resolving the long `tourid`, also verify the returned `shortid` through:
+
+```text
+https://tourvisor.ru/xml/modact.php?currency=0&shortid=<shortId>&referrer=https://tourvisor.ru/t/<shortId>&session=
+```
+
+This mirrors the first request made by the public `/t/<shortId>` page. If this
+shortid flow says sold or unavailable, skip the alert even if the long tour id
+looked available.
+
 ## Sold Tour Filtering
 
 Sold tours are not useful and must not be sent.
@@ -234,6 +244,10 @@ operator-min:<requestId>:<operatorId>
 ```
 
 These rows contain only an operator minimum price, not a concrete tour card. They cannot be reliably checked for sold/available status and should only be used as background market context or no-deal report data.
+
+No-deal report minimums must also be resolved through `modact.php` before a
+button is shown. If the minimum resolves as unavailable, show the report without
+an open-minimum button.
 
 If sold tours still arrive, inspect the exact `tourid` with:
 

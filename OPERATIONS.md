@@ -111,6 +111,7 @@ Access model:
 
 Editable from menu:
 
+- the main entry for search parameters is `Текущий поиск`; the separate `Настройки` menu button is hidden as a duplicate
 - current search summary;
 - departure city
 - country

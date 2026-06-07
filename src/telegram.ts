@@ -658,7 +658,7 @@ function currencyParam(currency: Currency | string): string {
 function mainKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
   return Markup.inlineKeyboard([
     [Markup.button.callback("🧭 Текущий поиск", "menu:preset")],
-    [Markup.button.callback("⚙️ Настройки", "menu:settings"), Markup.button.callback("🔎 Проверить", "menu:check")],
+    [Markup.button.callback("🔎 Проверить", "menu:check")],
     [Markup.button.callback("🏆 Лучшие за 24 часа", "menu:best")],
     [Markup.button.callback("⏱ Лучшие за час", "menu:besthour")],
     [Markup.button.callback("📊 Статус", "menu:status")],
@@ -669,7 +669,7 @@ function mainKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
 function replyKeyboard(): ReturnType<typeof Markup.keyboard> {
   return Markup.keyboard([
     ["🧭 Текущий поиск"],
-    ["⚙️ Настройки", "🔎 Проверить"],
+    ["🔎 Проверить"],
     ["🏆 Лучшие за 24 часа"],
     ["⏱ Лучшие за час"],
     ["📊 Статус", "⏸ Пауза", "▶️ Старт"]

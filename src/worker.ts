@@ -114,7 +114,7 @@ export class Worker {
     this.storage.setLastBestDigestAt(new Date());
     if (bestDeals.length === 0) return;
 
-    await this.notifier.sendBestDealsDigest(bestDeals, "Best tours in the last hour");
+    await this.notifier.sendBestDealsDigest(bestDeals, "Лучшие туры за прошлый час / Best tours in the last hour");
   }
 
   private async sendNoDealReportIfDue(preset: SearchPreset, scopedDeals: Awaited<ReturnType<TourProvider["search"]>>): Promise<void> {

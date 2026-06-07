@@ -124,8 +124,7 @@ Editable from menu:
 - stars
 - scan interval
 - alerts per check
-- no-deal report on/off
-- no-deal report interval
+- no-deal reports are disabled and hidden from the Telegram settings menu
 
 Best deals:
 

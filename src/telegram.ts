@@ -687,8 +687,7 @@ function settingsKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
     [Markup.button.callback("🌙 Ночи", "set:nights"), Markup.button.callback("👥 Туристы", "set:people")],
     [Markup.button.callback("🏨 Отели", "set:hotels")],
     [Markup.button.callback("⏱ Интервал", "set:interval")],
-    [Markup.button.callback("🔔 Лимит туров", "set:maxAlerts"), Markup.button.callback("🟡 Частота отчетов", "set:reportInterval")],
-    [Markup.button.callback("🟢 Отчеты вкл", "set:reports:on"), Markup.button.callback("🔴 Отчеты выкл", "set:reports:off")],
+    [Markup.button.callback("🔔 Лимит туров", "set:maxAlerts")],
     [
       Markup.button.callback("USD", "set:currency:USD"),
       Markup.button.callback("EUR", "set:currency:EUR"),

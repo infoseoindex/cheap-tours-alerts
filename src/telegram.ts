@@ -611,6 +611,7 @@ function formatBestDealLine(deal: BestDealObservation, rank: number): string {
     `<b>#${rank}. ${escapeHtml(price)}</b>`,
     `<a href="${escapeHtml(deal.url)}">${escapeHtml(title)}</a>`,
     details.length ? escapeHtml(details.join(", ")) : undefined,
+    `<a href="${escapeHtml(deal.url)}">Open tour</a>`,
     reasons
   ]
     .filter(Boolean)

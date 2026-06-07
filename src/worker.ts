@@ -98,6 +98,10 @@ export class Worker {
       }
     }
 
+    if (sent > 0) {
+      console.log(`Preset ${preset.id}: sent ${sent} deal alerts`);
+    }
+
     if (!goodFound) {
       await this.sendNoDealReportIfDue(preset, deals);
     }

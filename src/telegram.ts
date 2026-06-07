@@ -593,6 +593,7 @@ export class TelegramNotifier {
           parse_mode: "HTML",
           ...keyboard
         });
+        console.log(`Sent deal message to chat ${chatId}`);
       } catch (error) {
         console.error(`Failed to send deal alert to chat ${chatId}`, error);
         if (telegramErrorCode(error) === 403) {

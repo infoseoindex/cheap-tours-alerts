@@ -42,6 +42,7 @@ export class Worker {
       `Interval: ${this.getIntervalSeconds()}s`,
       `Alerts per check: ${this.storage.getMaxAlertsPerCheck(10) || "unlimited"}`,
       `No-deal reports: ${this.storage.getNoDealReportsEnabled(true) ? `on, every ${this.storage.getNoDealReportIntervalSeconds(3600)}s` : "off"}`,
+      `Best digest: hourly, last ${this.storage.getLastBestDigestAt() ?? "never"}`,
       `Last run: ${this.storage.getLastRun() ?? "never"}`
     ].join("\n");
   }
@@ -87,6 +88,7 @@ export class Worker {
       }
 
       goodFound = true;
+      this.storage.recordDealObservation(preset.id, resolvedDeal, decision.priceRub, decision.reasons);
       await this.notifier.sendDeal(preset, resolvedDeal, decision.reasons);
       this.storage.markAlertSent(preset.id, resolvedDeal, decision.reasons);
       sent += 1;
@@ -99,6 +101,20 @@ export class Worker {
     if (!goodFound) {
       await this.sendNoDealReportIfDue(preset, deals);
     }
+
+    await this.sendBestDigestIfDue();
+  }
+
+  private async sendBestDigestIfDue(): Promise<void> {
+    const last = this.storage.getLastBestDigestAt();
+    const lastTime = last ? new Date(last).getTime() : 0;
+    if (Number.isFinite(lastTime) && Date.now() - lastTime < 3600_000) return;
+
+    const bestDeals = this.storage.listBestDealObservationsSince(new Date(Date.now() - 3600_000).toISOString(), 5);
+    this.storage.setLastBestDigestAt(new Date());
+    if (bestDeals.length === 0) return;
+
+    await this.notifier.sendBestDealsDigest(bestDeals, "Best tours in the last hour");
   }
 
   private async sendNoDealReportIfDue(preset: SearchPreset, scopedDeals: Awaited<ReturnType<TourProvider["search"]>>): Promise<void> {

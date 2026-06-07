@@ -2,7 +2,7 @@ import { Markup, Telegraf } from "telegraf";
 import type { Context } from "telegraf";
 import { CurrencyConverter } from "./currency.js";
 import { validatePreset } from "./presetValidation.js";
-import { Storage } from "./storage.js";
+import { Storage, type BestDealObservation } from "./storage.js";
 import { isAllResortsInput, knownDirectionsHelp, resolveCountry, resolveDeparture, resolveResorts } from "./tourvisorDirectory.js";
 import type { Currency, MealCode, SearchPreset, TourDeal } from "./types.js";
 
@@ -42,6 +42,7 @@ export class TelegramNotifier {
       { command: "settings", description: "Настройки / Settings" },
       { command: "status", description: "Статус / Status" },
       { command: "check", description: "Проверить сейчас / Check now" },
+      { command: "best", description: "Best tours" },
       { command: "pause", description: "Пауза / Pause" },
       { command: "resume", description: "Старт / Resume" },
       { command: "stop", description: "Unsubscribe" }
@@ -119,6 +120,10 @@ export class TelegramNotifier {
     });
   }
 
+  async sendBestDealsDigest(deals: BestDealObservation[], title: string): Promise<void> {
+    await this.sendToDealSubscribers(this.formatBestDeals(title, deals), bestDealsKeyboard(deals));
+  }
+
   private registerCommands(): void {
     this.bot.start(async (ctx) => {
       await this.subscribeCurrentChat(ctx);
@@ -162,6 +167,11 @@ export class TelegramNotifier {
       await this.runManualCheck(ctx);
     });
 
+    this.bot.command("best", async (ctx) => {
+      if (!this.isAdmin(ctx)) return;
+      await this.sendBestDeals(ctx);
+    });
+
     this.bot.command("pause", async (ctx) => {
       if (!this.isAdmin(ctx)) return;
       this.setPaused(true);
@@ -186,6 +196,7 @@ export class TelegramNotifier {
 
       if (action === "settings" || action === "preset") return this.sendSettings(ctx);
       if (action === "check") return this.runManualCheck(ctx);
+      if (action === "best") return this.sendBestDeals(ctx);
       if (action === "status") return ctx.reply(this.getStatus(), mainKeyboard());
       if (action === "pause") {
         this.setPaused(true);
@@ -256,6 +267,19 @@ export class TelegramNotifier {
         .join("\n\n"),
       mainKeyboard()
     );
+  }
+
+  private async sendBestDeals(ctx: Context): Promise<void> {
+    const deals = this.storage.listBestDealObservationsSince(new Date(Date.now() - 3600_000).toISOString(), 5);
+    if (deals.length === 0) {
+      await ctx.reply("No best deals recorded in the last hour yet.", mainKeyboard());
+      return;
+    }
+
+    await ctx.reply(this.formatBestDeals("Best tours in the last hour", deals), {
+      parse_mode: "HTML",
+      ...bestDealsKeyboard(deals)
+    });
   }
 
   private async handleSetAction(ctx: Context, action: string): Promise<void> {
@@ -501,6 +525,10 @@ export class TelegramNotifier {
       await this.runManualCheck(ctx);
       return;
     }
+    if (text.includes("Best tours")) {
+      await this.sendBestDeals(ctx);
+      return;
+    }
     if (text.includes("Статус") || text.includes("Status")) {
       await ctx.reply(this.getStatus(), mainKeyboard());
       return;
@@ -534,6 +562,14 @@ export class TelegramNotifier {
     return Array.from(new Set([this.adminChatId, ...this.storage.listActiveSubscriberChatIds()]));
   }
 
+  private formatBestDeals(title: string, deals: BestDealObservation[]): string {
+    return [
+      `🏆 <b>${escapeHtml(title)}</b>`,
+      "",
+      ...deals.map((deal, index) => formatBestDealLine(deal, index + 1))
+    ].join("\n\n");
+  }
+
   private async sendToDealSubscribers(
     text: string,
     keyboard: ReturnType<typeof Markup.inlineKeyboard>
@@ -560,10 +596,38 @@ function telegramErrorCode(error: unknown): number | undefined {
   return response?.error_code;
 }
 
+function formatBestDealLine(deal: BestDealObservation, rank: number): string {
+  const price = `${Math.round(deal.priceAmount).toLocaleString("en-US")} ${deal.priceCurrency}`;
+  const title = deal.hotelName || deal.title;
+  const details = [
+    deal.dateStart,
+    deal.nights ? `${deal.nights} nights` : undefined,
+    deal.meal,
+    deal.operator
+  ].filter(Boolean);
+  const reasons = deal.reasons.length ? `\n✅ ${escapeHtml(deal.reasons.join("; "))}` : "";
+
+  return [
+    `<b>#${rank}. ${escapeHtml(price)}</b>`,
+    `<a href="${escapeHtml(deal.url)}">${escapeHtml(title)}</a>`,
+    details.length ? escapeHtml(details.join(", ")) : undefined,
+    reasons
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function bestDealsKeyboard(deals: BestDealObservation[]): ReturnType<typeof Markup.inlineKeyboard> {
+  return Markup.inlineKeyboard(
+    deals.map((deal, index) => [Markup.button.url(`#${index + 1} Open tour`, deal.url)])
+  );
+}
+
 function mainKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
   return Markup.inlineKeyboard([
     [Markup.button.callback("🧭 Текущий поиск", "menu:preset")],
     [Markup.button.callback("⚙️ Настройки", "menu:settings"), Markup.button.callback("🔎 Проверить", "menu:check")],
+    [Markup.button.callback("🏆 Best tours", "menu:best")],
     [Markup.button.callback("📊 Статус", "menu:status")],
     [Markup.button.callback("⏸ Пауза", "menu:pause"), Markup.button.callback("▶️ Старт", "menu:resume")]
   ]);
@@ -573,6 +637,7 @@ function replyKeyboard(): ReturnType<typeof Markup.keyboard> {
   return Markup.keyboard([
     ["🧭 Текущий поиск"],
     ["⚙️ Настройки", "🔎 Проверить"],
+    ["🏆 Best tours"],
     ["📊 Статус", "⏸ Пауза", "▶️ Старт"]
   ]).resize();
 }
@@ -585,6 +650,7 @@ function isMenuText(text: string): boolean {
     text.includes("Current search") ||
     text.includes("Проверить") ||
     text.includes("Check") ||
+    text.includes("Best tours") ||
     text.includes("Статус") ||
     text.includes("Status") ||
     text.includes("Пауза") ||

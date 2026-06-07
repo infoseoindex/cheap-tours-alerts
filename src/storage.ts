@@ -10,6 +10,23 @@ interface SubscriberInput {
   languageCode?: string;
 }
 
+export interface BestDealObservation {
+  presetId: string;
+  dealId: string;
+  title: string;
+  url: string;
+  hotelName?: string;
+  priceRub: number;
+  priceAmount: number;
+  priceCurrency: string;
+  dateStart?: string;
+  nights?: number;
+  meal?: string;
+  operator?: string;
+  reasons: string[];
+  seenAt: string;
+}
+
 export class Storage {
   private readonly db: Database.Database;
 
@@ -129,10 +146,98 @@ export class Storage {
       .run(presetId, deal.externalId, deal.title, deal.url, JSON.stringify(reasons), new Date().toISOString());
   }
 
+  recordDealObservation(presetId: string, deal: TourDeal, priceRub: number, reasons: string[]): void {
+    this.db
+      .prepare(
+        `insert into deal_observations(
+          preset_id, deal_id, title, url, hotel_name, price_rub, price_amount,
+          price_currency, date_start, nights, meal, operator, reasons_json, seen_at
+        ) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        presetId,
+        deal.externalId,
+        deal.title,
+        deal.url,
+        deal.hotelName ?? "",
+        priceRub,
+        deal.price.amount,
+        deal.price.currency,
+        deal.dateStart ?? "",
+        deal.nights ?? null,
+        deal.meal ? String(deal.meal) : "",
+        deal.operator ?? "",
+        JSON.stringify(reasons),
+        new Date().toISOString()
+      );
+  }
+
+  listBestDealObservationsSince(sinceIso: string, limit = 5): BestDealObservation[] {
+    const rows = this.db
+      .prepare(
+        `select
+          preset_id, deal_id, title, url, hotel_name, price_rub, price_amount,
+          price_currency, date_start, nights, meal, operator, reasons_json, seen_at
+        from deal_observations
+        where seen_at >= ?
+        order by price_rub asc, seen_at desc
+        limit ?`
+      )
+      .all(sinceIso, Math.max(limit * 8, limit)) as Array<{
+      preset_id: string;
+      deal_id: string;
+      title: string;
+      url: string;
+      hotel_name: string;
+      price_rub: number;
+      price_amount: number;
+      price_currency: string;
+      date_start: string;
+      nights: number | null;
+      meal: string;
+      operator: string;
+      reasons_json: string;
+      seen_at: string;
+    }>;
+
+    const seen = new Set<string>();
+    const result: BestDealObservation[] = [];
+    for (const row of rows) {
+      if (seen.has(row.deal_id)) continue;
+      seen.add(row.deal_id);
+      result.push({
+        presetId: row.preset_id,
+        dealId: row.deal_id,
+        title: row.title,
+        url: row.url,
+        hotelName: row.hotel_name || undefined,
+        priceRub: row.price_rub,
+        priceAmount: row.price_amount,
+        priceCurrency: row.price_currency,
+        dateStart: row.date_start || undefined,
+        nights: row.nights ?? undefined,
+        meal: row.meal || undefined,
+        operator: row.operator || undefined,
+        reasons: JSON.parse(row.reasons_json) as string[],
+        seenAt: row.seen_at
+      });
+      if (result.length >= limit) break;
+    }
+    return result;
+  }
+
   listRecentAlerts(limit = 10): Array<{ title: string; url: string; sent_at: string; reasons_json: string }> {
     return this.db
       .prepare("select title, url, sent_at, reasons_json from sent_alerts order by sent_at desc limit ?")
       .all(limit) as Array<{ title: string; url: string; sent_at: string; reasons_json: string }>;
+  }
+
+  getLastBestDigestAt(): string | undefined {
+    return this.getValue("last_best_digest_at");
+  }
+
+  setLastBestDigestAt(date: Date): void {
+    this.setValue("last_best_digest_at", date.toISOString());
   }
 
   upsertSubscriber(input: SubscriberInput): void {
@@ -210,6 +315,27 @@ export class Storage {
         sent_at text not null,
         unique(preset_id, deal_id)
       );
+
+      create table if not exists deal_observations (
+        id integer primary key autoincrement,
+        preset_id text not null,
+        deal_id text not null,
+        title text not null,
+        url text not null,
+        hotel_name text not null default '',
+        price_rub integer not null,
+        price_amount real not null,
+        price_currency text not null,
+        date_start text not null default '',
+        nights integer,
+        meal text not null default '',
+        operator text not null default '',
+        reasons_json text not null,
+        seen_at text not null
+      );
+
+      create index if not exists idx_deal_observations_best
+      on deal_observations(seen_at, price_rub);
 
       create table if not exists subscribers (
         chat_id text primary key,

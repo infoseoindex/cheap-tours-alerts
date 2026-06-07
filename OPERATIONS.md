@@ -93,6 +93,7 @@ The bot supports:
 - `/status`
 - `/check`
 - `/best`
+- `/besthour`
 - `/pause`
 - `/resume`
 - `/last`
@@ -103,8 +104,9 @@ Access model:
 - Any user can open `https://t.me/CheapToursAlertsBot` and press Start to subscribe.
 - Deal alerts are broadcast to active subscribers plus the admin chat.
 - Search settings, manual checks, status, pause/resume, and last-alert history are admin-only.
-- `/best` is admin-only and shows the top 5 clean good deals recorded in the last hour.
-- No-deal reports are admin-only; public subscribers should receive real deal alerts, not heartbeat reports.
+- `/best` is admin-only and shows the top 5 clean good deals recorded in the last 24 hours.
+- `/besthour` is admin-only and shows the top 5 clean good deals recorded in the last hour.
+- No-deal reports are admin-only and default to off; public subscribers should receive real deal alerts and best-tour digests, not heartbeat reports.
 - Subscribers are stored in SQLite table `subscribers`.
 
 Editable from menu:
@@ -128,7 +130,8 @@ Editable from menu:
 Best deals:
 
 - Every resolved available good deal is stored in SQLite table `deal_observations`.
-- `/best` reads `deal_observations` from the last hour, sorts by lowest RUB-equivalent price, deduplicates by deal ID, and shows up to 5 tours.
+- `/best` reads `deal_observations` from the last 24 hours, sorts by lowest RUB-equivalent price, deduplicates by deal ID, and shows up to 5 tours.
+- `/besthour` reads `deal_observations` from the last hour with the same sorting and dedupe.
 - The worker sends an automatic hourly "Best tours in the last hour" digest to active deal subscribers when there is at least one recorded good deal.
 - The hourly digest timestamp is stored in SQLite key `last_best_digest_at`.
 

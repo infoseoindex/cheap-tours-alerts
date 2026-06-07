@@ -42,7 +42,8 @@ export class TelegramNotifier {
       { command: "settings", description: "Настройки / Settings" },
       { command: "status", description: "Статус / Status" },
       { command: "check", description: "Проверить сейчас / Check now" },
-      { command: "best", description: "Лучшие за час / Best tours" },
+      { command: "best", description: "Лучшие за 24 часа / Best 24h" },
+      { command: "besthour", description: "Лучшие за час / Best hour" },
       { command: "pause", description: "Пауза / Pause" },
       { command: "resume", description: "Старт / Resume" },
       { command: "stop", description: "Unsubscribe" }
@@ -169,7 +170,12 @@ export class TelegramNotifier {
 
     this.bot.command("best", async (ctx) => {
       if (!this.isAdmin(ctx)) return;
-      await this.sendBestDeals(ctx);
+      await this.sendBestDeals(ctx, 24);
+    });
+
+    this.bot.command("besthour", async (ctx) => {
+      if (!this.isAdmin(ctx)) return;
+      await this.sendBestDeals(ctx, 1);
     });
 
     this.bot.command("pause", async (ctx) => {
@@ -196,7 +202,8 @@ export class TelegramNotifier {
 
       if (action === "settings" || action === "preset") return this.sendSettings(ctx);
       if (action === "check") return this.runManualCheck(ctx);
-      if (action === "best") return this.sendBestDeals(ctx);
+      if (action === "best") return this.sendBestDeals(ctx, 24);
+      if (action === "besthour") return this.sendBestDeals(ctx, 1);
       if (action === "status") return ctx.reply(this.getStatus(), mainKeyboard());
       if (action === "pause") {
         this.setPaused(true);
@@ -269,14 +276,15 @@ export class TelegramNotifier {
     );
   }
 
-  private async sendBestDeals(ctx: Context): Promise<void> {
-    const deals = this.storage.listBestDealObservationsSince(new Date(Date.now() - 3600_000).toISOString(), 5);
+  private async sendBestDeals(ctx: Context, hours: number): Promise<void> {
+    const deals = this.storage.listBestDealObservationsSince(new Date(Date.now() - hours * 3600_000).toISOString(), 5);
     if (deals.length === 0) {
-      await ctx.reply("No best deals recorded in the last hour yet.", mainKeyboard());
+      await ctx.reply(`No best deals recorded in the last ${hours === 1 ? "hour" : `${hours} hours`} yet.`, mainKeyboard());
       return;
     }
 
-    await ctx.reply(this.formatBestDeals("Best tours in the last hour", deals), {
+    const title = hours === 1 ? "Лучшие туры за час / Best tours in the last hour" : "Лучшие туры за 24 часа / Best tours in the last 24 hours";
+    await ctx.reply(this.formatBestDeals(title, deals), {
       parse_mode: "HTML",
       ...bestDealsKeyboard(deals)
     });
@@ -511,7 +519,7 @@ export class TelegramNotifier {
       `📉 Скидка / Discount: ${preset.discountPercent ? `${preset.discountPercent}% below baseline` : "off / выкл"}`,
       `⏱ Интервал / Interval: ${this.storage.getCheckIntervalSeconds(300)}s`,
       `🔔 Туров за проверку / Alerts per check: ${this.storage.getMaxAlertsPerCheck(10) || "unlimited / без лимита"}`,
-      `🟡 Отчеты без находок / No-deal reports: ${this.storage.getNoDealReportsEnabled(true) ? `on, every ${this.storage.getNoDealReportIntervalSeconds(3600)}s` : "off / выкл"}`,
+      `🟡 Отчеты без находок / No-deal reports: ${this.storage.getNoDealReportsEnabled(false) ? `on, every ${this.storage.getNoDealReportIntervalSeconds(3600)}s` : "off / выкл"}`,
       "▶️ Автоуведомления / Auto alerts: active unless paused"
     ].join("\n");
   }
@@ -525,8 +533,12 @@ export class TelegramNotifier {
       await this.runManualCheck(ctx);
       return;
     }
-    if (text.includes("Лучшие за час") || text.includes("Best tours")) {
-      await this.sendBestDeals(ctx);
+    if (text.includes("Лучшие за 24") || text.includes("Best 24")) {
+      await this.sendBestDeals(ctx, 24);
+      return;
+    }
+    if (text.includes("Лучшие за час") || text.includes("Best hour") || text.includes("Best tours")) {
+      await this.sendBestDeals(ctx, 1);
       return;
     }
     if (text.includes("Статус") || text.includes("Status")) {
@@ -628,7 +640,8 @@ function mainKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
   return Markup.inlineKeyboard([
     [Markup.button.callback("🧭 Текущий поиск", "menu:preset")],
     [Markup.button.callback("⚙️ Настройки", "menu:settings"), Markup.button.callback("🔎 Проверить", "menu:check")],
-    [Markup.button.callback("🏆 Лучшие за час", "menu:best")],
+    [Markup.button.callback("🏆 Лучшие за 24 часа", "menu:best")],
+    [Markup.button.callback("⏱ Лучшие за час", "menu:besthour")],
     [Markup.button.callback("📊 Статус", "menu:status")],
     [Markup.button.callback("⏸ Пауза", "menu:pause"), Markup.button.callback("▶️ Старт", "menu:resume")]
   ]);
@@ -638,7 +651,8 @@ function replyKeyboard(): ReturnType<typeof Markup.keyboard> {
   return Markup.keyboard([
     ["🧭 Текущий поиск"],
     ["⚙️ Настройки", "🔎 Проверить"],
-    ["🏆 Лучшие за час"],
+    ["🏆 Лучшие за 24 часа"],
+    ["⏱ Лучшие за час"],
     ["📊 Статус", "⏸ Пауза", "▶️ Старт"]
   ]).resize();
 }
@@ -651,7 +665,10 @@ function isMenuText(text: string): boolean {
     text.includes("Current search") ||
     text.includes("Проверить") ||
     text.includes("Check") ||
+    text.includes("Лучшие за 24") ||
+    text.includes("Best 24") ||
     text.includes("Лучшие за час") ||
+    text.includes("Best hour") ||
     text.includes("Best tours") ||
     text.includes("Статус") ||
     text.includes("Status") ||
@@ -688,6 +705,8 @@ function settingsKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
       Markup.button.callback("4+", "set:stars:4"),
       Markup.button.callback("5", "set:stars:5")
     ],
+    [Markup.button.callback("🏆 Лучшие за 24 часа", "menu:best")],
+    [Markup.button.callback("⏱ Лучшие за час", "menu:besthour")],
     [Markup.button.callback("🔎 Проверить сейчас", "menu:check")]
   ]);
 }

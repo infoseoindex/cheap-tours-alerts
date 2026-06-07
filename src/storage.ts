@@ -84,7 +84,7 @@ export class Storage {
     this.setValue("max_alerts_per_check", String(value));
   }
 
-  getNoDealReportsEnabled(defaultValue = true): boolean {
+  getNoDealReportsEnabled(defaultValue = false): boolean {
     const raw = this.getValue("no_deal_reports_enabled");
     if (raw === undefined) return defaultValue;
     return raw === "1" || raw === "true";

@@ -41,7 +41,7 @@ export class Worker {
       `Subscribers: ${this.storage.listActiveSubscriberChatIds().length}`,
       `Interval: ${this.getIntervalSeconds()}s`,
       `Alerts per check: ${this.storage.getMaxAlertsPerCheck(10) || "unlimited"}`,
-      `No-deal reports: ${this.storage.getNoDealReportsEnabled(true) ? `on, every ${this.storage.getNoDealReportIntervalSeconds(3600)}s` : "off"}`,
+      `No-deal reports: ${this.storage.getNoDealReportsEnabled(false) ? `on, every ${this.storage.getNoDealReportIntervalSeconds(3600)}s` : "off"}`,
       `Best digest: hourly, last ${this.storage.getLastBestDigestAt() ?? "never"}`,
       `Last run: ${this.storage.getLastRun() ?? "never"}`
     ].join("\n");
@@ -118,7 +118,7 @@ export class Worker {
   }
 
   private async sendNoDealReportIfDue(preset: SearchPreset, scopedDeals: Awaited<ReturnType<TourProvider["search"]>>): Promise<void> {
-    if (!this.storage.getNoDealReportsEnabled(true)) return;
+    if (!this.storage.getNoDealReportsEnabled(false)) return;
     if (!this.isNoDealReportDue(preset.id)) return;
 
     const marketPreset = preset.budget ? { ...preset, budget: { ...preset.budget, amount: 0 } } : preset;

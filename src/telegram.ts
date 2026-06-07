@@ -42,7 +42,7 @@ export class TelegramNotifier {
       { command: "settings", description: "Настройки / Settings" },
       { command: "status", description: "Статус / Status" },
       { command: "check", description: "Проверить сейчас / Check now" },
-      { command: "best", description: "Best tours" },
+      { command: "best", description: "Лучшие за час / Best tours" },
       { command: "pause", description: "Пауза / Pause" },
       { command: "resume", description: "Старт / Resume" },
       { command: "stop", description: "Unsubscribe" }
@@ -525,7 +525,7 @@ export class TelegramNotifier {
       await this.runManualCheck(ctx);
       return;
     }
-    if (text.includes("Best tours")) {
+    if (text.includes("Лучшие за час") || text.includes("Best tours")) {
       await this.sendBestDeals(ctx);
       return;
     }
@@ -628,7 +628,7 @@ function mainKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
   return Markup.inlineKeyboard([
     [Markup.button.callback("🧭 Текущий поиск", "menu:preset")],
     [Markup.button.callback("⚙️ Настройки", "menu:settings"), Markup.button.callback("🔎 Проверить", "menu:check")],
-    [Markup.button.callback("🏆 Best tours", "menu:best")],
+    [Markup.button.callback("🏆 Лучшие за час", "menu:best")],
     [Markup.button.callback("📊 Статус", "menu:status")],
     [Markup.button.callback("⏸ Пауза", "menu:pause"), Markup.button.callback("▶️ Старт", "menu:resume")]
   ]);
@@ -638,7 +638,7 @@ function replyKeyboard(): ReturnType<typeof Markup.keyboard> {
   return Markup.keyboard([
     ["🧭 Текущий поиск"],
     ["⚙️ Настройки", "🔎 Проверить"],
-    ["🏆 Best tours"],
+    ["🏆 Лучшие за час"],
     ["📊 Статус", "⏸ Пауза", "▶️ Старт"]
   ]).resize();
 }
@@ -651,6 +651,7 @@ function isMenuText(text: string): boolean {
     text.includes("Current search") ||
     text.includes("Проверить") ||
     text.includes("Check") ||
+    text.includes("Лучшие за час") ||
     text.includes("Best tours") ||
     text.includes("Статус") ||
     text.includes("Status") ||

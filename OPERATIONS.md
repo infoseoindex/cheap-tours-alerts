@@ -83,6 +83,25 @@ git push
 
 Do not leave important operational knowledge only in chat. If another chat/session starts tomorrow, `OPERATIONS.md` must be enough to understand what happened and how to continue safely.
 
+## Collaboration Style
+
+This project is still active and can keep changing. Use this section as the
+portable working style for continuing here or starting a separate project in a
+new chat.
+
+- Work step by step and explain changes in simple language.
+- Prefer practical MVPs first, then improve based on real usage.
+- Keep Telegram/UI menus clean: remove duplicate or low-value buttons.
+- Preserve useful behavior that already works; change only what the user asks
+  to improve.
+- When a feature changes product behavior, update this operations file in the
+  same work session.
+- After code changes, build, restart the service, check that it is active, then
+  commit and push to GitHub.
+- Keep secrets out of GitHub and out of documentation.
+- If starting another project, create a separate chat and paste these working
+  rules as the first context block.
+
 ## Current Telegram Settings
 
 The bot supports:

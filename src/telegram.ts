@@ -79,7 +79,8 @@ export class TelegramNotifier {
       ...reasons.map((reason) => `✅ ${escapeHtml(reason)}`)
     ].filter(Boolean);
 
-    const buttons = [[Markup.button.url("🔎 Открыть тур / Open tour", deal.url)]];
+    const tourUrl = tourUrlWithCurrency(deal.url, deal.price.currency);
+    const buttons = [[Markup.button.url("🔎 Открыть тур / Open tour", tourUrl)]];
     if (bookingLink) buttons.push([Markup.button.url("🧾 Оформить / Book", bookingLink)]);
 
     await this.sendToDealSubscribers(lines.join("\n"), Markup.inlineKeyboard(buttons));
@@ -611,6 +612,7 @@ function telegramErrorCode(error: unknown): number | undefined {
 function formatBestDealLine(deal: BestDealObservation, rank: number): string {
   const price = `${Math.round(deal.priceAmount).toLocaleString("en-US")} ${deal.priceCurrency}`;
   const title = deal.hotelName || deal.title;
+  const tourUrl = tourUrlWithCurrency(deal.url, deal.priceCurrency);
   const details = [
     deal.dateStart,
     deal.nights ? `${deal.nights} nights` : undefined,
@@ -621,9 +623,9 @@ function formatBestDealLine(deal: BestDealObservation, rank: number): string {
 
   return [
     `<b>#${rank}. ${escapeHtml(price)}</b>`,
-    `<a href="${escapeHtml(deal.url)}">${escapeHtml(title)}</a>`,
+    `<a href="${escapeHtml(tourUrl)}">${escapeHtml(title)}</a>`,
     details.length ? escapeHtml(details.join(", ")) : undefined,
-    `<a href="${escapeHtml(deal.url)}">Open tour</a>`,
+    `<a href="${escapeHtml(tourUrl)}">Open tour</a>`,
     reasons
   ]
     .filter(Boolean)
@@ -632,8 +634,25 @@ function formatBestDealLine(deal: BestDealObservation, rank: number): string {
 
 function bestDealsKeyboard(deals: BestDealObservation[]): ReturnType<typeof Markup.inlineKeyboard> {
   return Markup.inlineKeyboard(
-    deals.map((deal, index) => [Markup.button.url(`#${index + 1} Open tour`, deal.url)])
+    deals.map((deal, index) => [Markup.button.url(`#${index + 1} Open tour`, tourUrlWithCurrency(deal.url, deal.priceCurrency))])
   );
+}
+
+function tourUrlWithCurrency(urlValue: string, currency: Currency | string): string {
+  try {
+    const url = new URL(urlValue);
+    url.searchParams.set("currency", currencyParam(currency));
+    return url.toString();
+  } catch {
+    return urlValue;
+  }
+}
+
+function currencyParam(currency: Currency | string): string {
+  const normalized = currency.toUpperCase();
+  if (normalized === "USD") return "5";
+  if (normalized === "EUR") return "6";
+  return "0";
 }
 
 function mainKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {

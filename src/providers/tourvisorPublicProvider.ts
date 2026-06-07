@@ -83,6 +83,10 @@ export class TourvisorPublicProvider implements TourProvider {
     const hotelName = stringFrom(tour.hotelname) ?? deal.hotelName;
     const tourName = stringFrom(tour.tourname);
     const room = stringFrom(tour.room) ?? rawString(deal.raw, "room");
+    const resolvedPrice = {
+      amount: numberFrom(tour.price) ?? deal.price.amount,
+      currency: currencyFrom(tour.currency) ?? deal.price.currency
+    };
 
     const resolved: TourDeal = {
       ...deal,
@@ -97,11 +101,8 @@ export class TourvisorPublicProvider implements TourProvider {
       operator: stringFrom(tour.operatorname) ?? deal.operator,
       isAvailable: availability.isAvailable,
       availabilityText: availability.text,
-      price: {
-        amount: numberFrom(tour.price) ?? deal.price.amount,
-        currency: currencyFrom(tour.currency) ?? deal.price.currency
-      },
-      url: buildTourUrl(searchLink, shortId, tourId, deal.url),
+      price: resolvedPrice,
+      url: buildTourUrl(searchLink, shortId, tourId, deal.url, resolvedPrice.currency),
       raw: {
         ...(recordFrom(deal.raw) ?? {}),
         id: tourId,
@@ -695,11 +696,18 @@ function buildSearchUrl(preset: SearchPreset): string {
   return url.toString();
 }
 
-function buildTourUrl(searchLink: string | undefined, shortId: string | undefined, tourId: string, fallback: string): string {
+function buildTourUrl(
+  searchLink: string | undefined,
+  shortId: string | undefined,
+  tourId: string,
+  fallback: string,
+  currency: Currency
+): string {
   const rawUrl = searchLink ?? (shortId ? `https://tourvisor.ru/t/${shortId}` : fallback);
 
   try {
     const url = new URL(rawUrl, "https://tourvisor.ru");
+    url.searchParams.set("currency", mapCurrency(currency));
     url.hash = `tvtourid=${tourId}`;
     return url.toString();
   } catch {

@@ -263,11 +263,20 @@ an error object. A known sold-card response is:
 The bot should use this detailed HTTP check instead of browser page scraping.
 
 Tourvisor public `/t/<shortId>` pages may still display some prices and filters
-in RUB even when the tour itself was found in USD/EUR; URL query parameters such
-as `?currency=5` do not reliably change that first public-page request. Keep the
-bot message price in the preset currency and include a direct booking/operator
-button when `data.tour.share.operatorlink` or `data.client.bookcenters[].link`
-is available.
+in RUB even when the tour itself was found in USD/EUR. Bot tour links should
+still include the Tourvisor currency parameter where possible:
+
+```text
+USD: currency=5
+EUR: currency=6
+RUB: currency=0
+```
+
+Keep the bot message price in the preset currency and include a direct
+booking/operator button when `data.tour.share.operatorlink` or
+`data.client.bookcenters[].link` is available. If Tourvisor ignores the currency
+parameter on a public `/t/<shortId>` page, the bot cannot fully force the UI
+currency from the link alone.
 
 ## Sold Tour Filtering
 

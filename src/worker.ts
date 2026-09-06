@@ -67,44 +67,50 @@ export class Worker {
     assertValidPreset(preset);
     const deals = this.filterByHotels(preset, await this.provider.search(preset));
     const maxAlerts = this.storage.getMaxAlertsPerCheck(10);
-    let sent = 0;
-    let goodFound = false;
-
-    for (const deal of deals) {
-      if (this.isSyntheticDeal(deal)) {
-        continue;
+    const candidates: Array<{ deal: TourDeal; decision: ReturnType<DealRules["evaluate"]> }> = [];
+    let cursor = 0;
+    let skipped = 0;
+    // Resolve all candidates before applying the message limit: prices may change.
+    const inspect = async () => {
+      while (cursor < deals.length) {
+        const deal = deals[cursor++];
+        if (this.isSyntheticDeal(deal)) continue;
+        const initial = this.rules.evaluate(preset, deal);
+        if (!initial.isGood) {
+          this.storage.savePrice(preset.id, deal, initial.priceRub);
+          continue;
+        }
+        try {
+          const resolved = this.provider.resolveDealLink ? await this.provider.resolveDealLink(deal) : deal;
+          const decision = this.rules.evaluate(preset, resolved);
+          this.storage.savePrice(preset.id, resolved, decision.priceRub);
+          const mismatch = this.dealMismatch(preset, resolved);
+          if ((resolved.isAvailable === false || (this.provider.resolveDealLink && resolved.isAvailable !== true)) || !decision.isGood || mismatch) {
+            skipped += 1;
+            console.log(`Preset ${preset.id}: skipped ${deal.externalId} price=${resolved.price.amount} ${resolved.price.currency}: ${mismatch || (!decision.isGood ? "price no longer qualifies" : resolved.availabilityText ?? "availability unknown")}`);
+            continue;
+          }
+          if (resolved.availabilityText?.includes("не подтверждены")) decision.reasons.push(resolved.availabilityText);
+          candidates.push({ deal: resolved, decision });
+        } catch (error) {
+          skipped += 1;
+          this.storage.savePrice(preset.id, deal, initial.priceRub);
+          console.warn(`Preset ${preset.id}: could not verify ${deal.externalId}`, error);
+        }
       }
-
-      const decision = this.rules.evaluate(preset, deal);
-      this.storage.savePrice(preset.id, deal, decision.priceRub);
-
-      if (!decision.isGood) {
-        continue;
-      }
-
-      const resolvedDeal = this.provider.resolveDealLink ? await this.provider.resolveDealLink(deal) : deal;
-      if (resolvedDeal.isAvailable === false) {
-        continue;
-      }
-
-      goodFound = true;
-      this.storage.recordDealObservation(preset.id, resolvedDeal, decision.priceRub, decision.reasons);
-      await this.notifier.sendDeal(preset, resolvedDeal, decision.reasons);
-      this.storage.markAlertSent(preset.id, resolvedDeal, decision.reasons);
-      sent += 1;
-
-      if (maxAlerts > 0 && sent >= maxAlerts) {
-        break;
-      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, deals.length) }, () => inspect()));
+    candidates.sort((a, b) => a.decision.priceRub - b.decision.priceRub);
+    for (const { deal, decision } of candidates) {
+      this.storage.recordDealObservation(preset.id, deal, decision.priceRub, decision.reasons);
     }
-
-    if (sent > 0) {
-      console.log(`Preset ${preset.id}: sent ${sent} deal alerts`);
+    const selected = maxAlerts > 0 ? candidates.slice(0, maxAlerts) : candidates;
+    for (const { deal, decision } of selected) {
+      await this.notifier.sendDeal(preset, deal, decision.reasons);
+      this.storage.markAlertSent(preset.id, deal, decision.reasons);
     }
-
-    if (!goodFound) {
-      await this.sendNoDealReportIfDue(preset, deals);
-    }
+    console.log(`Preset ${preset.id}: received=${deals.length}, eligible=${candidates.length}, skipped=${skipped}, sent ${selected.length} deal alerts`);
+    if (candidates.length === 0) await this.sendNoDealReportIfDue(preset, deals);
 
     await this.sendBestDigestIfDue();
   }
@@ -162,6 +168,20 @@ export class Worker {
       const haystack = normalizeHotelName([deal.hotelName, deal.title].filter(Boolean).join(" "));
       return names.some((name) => haystack.includes(name));
     });
+  }
+
+  private dealMismatch(preset: SearchPreset, deal: TourDeal): string | undefined {
+    if (deal.dateStart && (deal.dateStart < preset.dateFrom || deal.dateStart > preset.dateTo)) return "departure date outside search";
+    if (deal.nights !== undefined && (deal.nights < preset.nightsFrom || deal.nights > preset.nightsTo)) return "nights outside search";
+    if (preset.hotelStarsMin && deal.hotelStars !== undefined && deal.hotelStars < preset.hotelStarsMin) return "hotel stars below minimum";
+    // Public search can return RO even when BB was requested. Check decoded meals.
+    if (preset.meal !== "any") {
+      const meal = String(deal.meal ?? "").toUpperCase();
+      const code = meal.match(/^(UAI|AI|RO|BB|HB|FB)(?:\b|\s|-)/)?.[1]
+        ?? (/БЕЗ ПИТАНИЯ/.test(meal) ? "RO" : undefined);
+      if (code !== preset.meal) return "meal does not match search";
+    }
+    return undefined;
   }
 
   private isSyntheticDeal(deal: TourDeal): boolean {

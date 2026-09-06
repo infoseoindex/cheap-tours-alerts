@@ -476,3 +476,34 @@ Then read:
 - `src/providers/tourvisorPublicProvider.ts`
 - `src/tourvisorDirectory.ts`
 - `src/presetValidation.ts`
+
+## Search reliability update — 2026-09-06
+
+These rules supersede the older sold-filter description above:
+
+- Poll full `modresult` snapshots every 3 seconds for up to 120 seconds per search.
+  Never send a fixed `lastblock=5`. Preserve received blocks and decoder tables
+  across replies, including final replies containing only status.
+- If operators remain pending (status 1) or fail (status 4), repeat the search
+  once and merge unique tour IDs. External failures can still leave gaps;
+  completion, block counts, missing operators and retries are logged.
+- Each HTTP request has a 30-second timeout. Detail verification retries once.
+- Explicit sold/notour flags and obsolete IDs still exclude a tour. Technical
+  errors such as GetDatabaseFail and missing data mean unknown, not sold.
+- When both main and short cards expose booking controls, a tour with failed
+  detail verification may be sent with a visible warning that details are not
+  confirmed. The warning also persists in observation reasons and digests.
+  Otherwise unknown availability is skipped and logged.
+- Verify candidates with four concurrent tasks, then sort by updated RUB price
+  before applying the message limit. Re-evaluate budget/discount on updated
+  prices before recording history. Reject mismatched dates, nights, stars and
+  decoded meal type. One failed card does not abort other candidates.
+- Record all eligible observations for best-tour digests, including offers
+  beyond the immediate message limit. Keep sending current offers each scan.
+- Run `npm test` (eight regression cases), then `npm run build` before deploy.
+
+Observed diagnostic example: short card 7621065950 / tour 99275210553110,
+Crown Nguyen Hoang Hotel, 2352 USD, Minsk–Nha Trang, 2026-09-15, 14 nights,
+BB, two adults. Main card returned booking controls, but the detail request
+returned GetDatabaseFail. A separate full search failed to receive Voyazhtur
+results. Neither technical condition proves that the tour is sold.

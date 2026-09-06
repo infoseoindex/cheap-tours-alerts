@@ -3,6 +3,9 @@ import type { Currency, SearchPreset, TourDeal, TourProvider } from "../types.js
 interface PublicProviderOptions {
   modsearchUrl: string;
   modresultUrl: string;
+  pollIntervalMs?: number;
+  searchTimeoutMs?: number;
+  verificationRetryDelayMs?: number;
 }
 
 interface ModsearchResponse {
@@ -25,7 +28,22 @@ export class TourvisorPublicProvider implements TourProvider {
   async search(preset: SearchPreset): Promise<TourDeal[]> {
     const requestId = await this.startSearch(preset);
     const payload = await this.pollResults(requestId);
-    return normalizePublicPayload(payload, preset, requestId);
+    const deals = normalizePublicPayload(payload, preset, requestId);
+    const data = recordFrom(recordFrom(payload)?.data);
+    const operators = Array.isArray(data?.operators) ? data.operators : [];
+    const failed = operators.filter((item) => [1, 4].includes(numberFrom(recordFrom(item)?.status) ?? 0));
+    if (failed.length > 0) {
+      console.warn(`Tourvisor search ${requestId}: retrying missing operators ${failed.map((item) => stringFrom(recordFrom(item)?.name)).join(", ")}`);
+      try {
+        const retryId = await this.startSearch(preset);
+        const retryPayload = await this.pollResults(retryId);
+        deals.push(...normalizePublicPayload(retryPayload, preset, retryId));
+      } catch (error) {
+        console.warn(`Tourvisor search ${requestId}: retry failed; keeping received offers`, error);
+      }
+    }
+    return [...new Map(deals.map((deal) => [deal.externalId, deal])).values()]
+      .sort((a, b) => a.price.amount - b.price.amount);
   }
 
   async resolveDealLink(deal: TourDeal): Promise<TourDeal> {
@@ -42,28 +60,29 @@ export class TourvisorPublicProvider implements TourProvider {
         "user-agent": "tour-deals-bot/0.1"
     });
 
-    if (!response.ok) return deal;
+    if (!response.ok) return { ...deal, isAvailable: undefined, availabilityText: `Не удалось проверить тур: HTTP ${response.status}` };
 
     const payload = await response.json();
     const errorText = errorTextFrom(payload);
     if (errorText) {
       return {
         ...deal,
-        isAvailable: false,
+        isAvailable: isExplicitlyUnavailable(errorText) ? false : undefined,
         availabilityText: errorText
       };
     }
 
     const data = recordFrom(recordFrom(payload)?.data);
     const tour = recordFrom(data?.tour);
-    if (!tour) return deal;
+    if (!tour) return { ...deal, isAvailable: undefined, availabilityText: "Не удалось получить карточку тура" };
     const client = recordFrom(data?.client);
     const availability = availabilityFromModact(data, tour, client);
+    if (availability.isAvailable === false) return { ...deal, isAvailable: false, availabilityText: availability.text };
 
     const share = recordFrom(tour.share);
     const searchLink = stringFrom(share?.searchlink);
     const shortId = stringFrom(tour.shortid);
-    const shortAvailability = shortId ? await this.resolveShortAvailability(shortId) : undefined;
+    const shortAvailability = shortId ? await this.resolveShortAvailability(shortId).catch(() => undefined) : undefined;
     if (shortAvailability?.isAvailable === false) {
       return {
         ...deal,
@@ -71,7 +90,12 @@ export class TourvisorPublicProvider implements TourProvider {
         availabilityText: shortAvailability.text
       };
     }
-    const detailedAvailability = await this.resolveDetailedAvailability(tourId, deal.price.currency, shortId);
+    let detailedAvailability: { isAvailable?: boolean; text?: string } | undefined;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      detailedAvailability = await this.resolveDetailedAvailability(tourId, deal.price.currency, shortId).catch(() => undefined);
+      if (detailedAvailability?.isAvailable !== undefined) break;
+      if (attempt === 0) await sleep(this.options.verificationRetryDelayMs ?? 1500);
+    }
     if (detailedAvailability?.isAvailable === false) {
       return {
         ...deal,
@@ -80,6 +104,9 @@ export class TourvisorPublicProvider implements TourProvider {
       };
     }
 
+    if (detailedAvailability?.isAvailable === undefined) {
+      console.warn(`Tourvisor ${tourId}: details unconfirmed after retry: ${detailedAvailability?.text ?? "network or HTTP failure"}`);
+    }
     const hotelName = stringFrom(tour.hotelname) ?? deal.hotelName;
     const tourName = stringFrom(tour.tourname);
     const room = stringFrom(tour.room) ?? rawString(deal.raw, "room");
@@ -99,8 +126,10 @@ export class TourvisorPublicProvider implements TourProvider {
       nights: numberFrom(tour.nights) ?? deal.nights,
       meal: stringFrom(tour.meal) ?? deal.meal,
       operator: stringFrom(tour.operatorname) ?? deal.operator,
-      isAvailable: availability.isAvailable,
-      availabilityText: availability.text,
+      isAvailable: detailedAvailability?.isAvailable === true ? true
+        : availability.isAvailable === true && shortAvailability?.isAvailable === true ? true : undefined,
+      availabilityText: detailedAvailability?.isAvailable === true ? "Заявка на тур доступна"
+        : "Карточка доступна; детали не подтверждены. Проверьте наличие перед бронированием.",
       price: resolvedPrice,
       url: buildTourUrl(searchLink, shortId, tourId, deal.url, resolvedPrice.currency),
       raw: {
@@ -161,62 +190,42 @@ export class TourvisorPublicProvider implements TourProvider {
   }
 
   private async pollResults(requestId: string): Promise<unknown> {
+    const deadline = Date.now() + (this.options.searchTimeoutMs ?? 120_000);
     let latest: unknown;
-    let richPayload: unknown;
-
-    await sleep(4500);
-    latest = await this.fetchResult(requestId, false);
-    if (hasBlocks(latest)) {
-      richPayload = latest;
-    }
-
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      latest = await this.fetchResult(requestId, true);
-      if (hasBlocks(latest)) {
-        richPayload = latest;
+    let complete = false;
+    do {
+      // Always request the full snapshot: lastblock=5 permanently hid block 5.
+      try {
+        latest = mergeSearchSnapshots(latest, await this.fetchResult(requestId));
+        const status = statusFrom(latest);
+        complete = status?.finished === 1 || status?.progress === 100;
+        if (complete) break;
+      } catch (error) {
+        console.warn(`Tourvisor search ${requestId}: result fetch failed`, error);
       }
-
-      const status = statusFrom(latest);
-      if (status?.finished === 1 || status?.progress === 100) {
-        if (hasBlocks(latest)) return latest;
-
-        for (let retry = 0; retry < 3; retry += 1) {
-          const full = await this.fetchResult(requestId, false).catch(() => undefined);
-          if (hasBlocks(full)) return full;
-          await sleep(1500);
-        }
-
-        return richPayload ?? latest;
-      }
-
-      await sleep(1500);
-    }
-
-    return richPayload ?? latest ?? {};
+      await sleep(this.options.pollIntervalMs ?? 3000);
+    } while (Date.now() < deadline);
+    if (!latest) throw new Error(`Tourvisor search ${requestId}: no results received`);
+    const data = recordFrom(recordFrom(latest)?.data);
+    console.log(`Tourvisor search ${requestId}: complete=${complete}, progress=${statusFrom(latest)?.progress ?? "unknown"}, blocks=${Array.isArray(data?.block) ? data.block.length : 0}`);
+    return latest;
   }
 
-  private async fetchResult(requestId: string, statusOnly: boolean): Promise<unknown> {
+  private async fetchResult(requestId: string): Promise<unknown> {
     const url = new URL(this.options.modresultUrl);
     url.searchParams.set("requestid", requestId);
-    if (statusOnly) {
-      url.searchParams.set("lastblock", "5");
-    }
     url.searchParams.set("referrer", "https://tourvisor.ru/search.php");
-
     const response = await this.fetchWithSession(url, {
-        accept: "application/json,text/plain,*/*",
-        "user-agent": "tour-deals-bot/0.1"
+      accept: "application/json,text/plain,*/*",
+      "user-agent": "tour-deals-bot/0.1"
     });
-
-    if (!response.ok) {
-      throw new Error(`Tourvisor modresult failed with ${response.status}: ${await response.text()}`);
-    }
-
+    if (!response.ok) throw new Error(`Tourvisor modresult failed with ${response.status}`);
     return response.json();
   }
 
   private async fetchWithSession(url: URL, headers: Record<string, string>, retry = true): Promise<Response> {
     const response = await fetch(url, {
+      signal: AbortSignal.timeout(30_000),
       headers: {
         ...headers,
         cookie: this.cookieHeader()
@@ -234,6 +243,7 @@ export class TourvisorPublicProvider implements TourProvider {
 
   private async refreshSession(): Promise<void> {
     const response = await fetch("https://tourvisor.ru/search.php", {
+      signal: AbortSignal.timeout(30_000),
       headers: {
         accept: "text/html,*/*",
         "user-agent": "tour-deals-bot/0.1"
@@ -280,7 +290,7 @@ export class TourvisorPublicProvider implements TourProvider {
     const errorText = errorTextFrom(payload);
     if (errorText) {
       return {
-        isAvailable: false,
+        isAvailable: isExplicitlyUnavailable(errorText) ? false : undefined,
         text: errorText
       };
     }
@@ -312,40 +322,14 @@ export class TourvisorPublicProvider implements TourProvider {
 
     const payload = await response.json();
     const data = recordFrom(recordFrom(payload)?.data);
-    if (!data) {
-      return {
-        isAvailable: false,
-        text: "Тур продан: detailed data is missing"
-      };
+    const tour = recordFrom(data?.tour);
+    if (booleanish(data?.sold) || booleanish(tour?.sold) || booleanish(tour?.notour)) {
+      return { isAvailable: false, text: "Тур продан" };
     }
-
-    const error = data.error;
-    if (error === undefined) {
-      return {
-        isAvailable: false,
-        text: "Тур продан: detailed error status is missing"
-      };
-    }
-
-    const errorRecord = recordFrom(error);
-    if (errorRecord) {
-      return {
-        isAvailable: false,
-        text: stringFrom(errorRecord.errormessage) ?? stringFrom(errorRecord.message) ?? `Tourvisor detailed error ${stringFrom(errorRecord.code) ?? ""}`.trim()
-      };
-    }
-
-    if (error !== false) {
-      return {
-        isAvailable: false,
-        text: "Tourvisor detailed check failed"
-      };
-    }
-
-    return {
-      isAvailable: true,
-      text: "Заявка на тур доступна"
-    };
+    const errorText = errorTextFrom(payload);
+    if (errorText) return { isAvailable: isExplicitlyUnavailable(errorText) ? false : undefined, text: errorText };
+    if (data?.error !== false) return { text: "Не удалось получить дополнительные сведения" };
+    return { isAvailable: true, text: "Заявка на тур доступна" };
   }
 }
 
@@ -584,11 +568,6 @@ function normalizeOperatorMinPrices(payload: unknown, preset: SearchPreset, requ
   return deals;
 }
 
-function hasBlocks(payload: unknown): boolean {
-  const data = recordFrom(payload && typeof payload === "object" ? (payload as Record<string, unknown>).data : undefined);
-  return Array.isArray(data?.block) && data.block.length > 0;
-}
-
 function statusFrom(payload: unknown): { progress?: number; finished?: number } | undefined {
   if (!payload || typeof payload !== "object") return undefined;
   const data = (payload as Record<string, unknown>).data;
@@ -624,8 +603,8 @@ function availabilityFromModact(
   const available = Boolean(showRequest || showRequestOffice || cart || operatorLink || bookcenters > 0);
 
   return {
-    isAvailable: available,
-    text: available ? "Заявка на тур доступна" : "Тур продан или заявка недоступна"
+    isAvailable: available ? true : undefined,
+    text: available ? "Заявка на тур доступна" : "Доступность заявки не подтверждена"
   };
 }
 
@@ -718,7 +697,7 @@ function buildTourUrl(
 function errorTextFrom(payload: unknown): string | undefined {
   const root = recordFrom(payload);
   const error = recordFrom(root?.error) ?? recordFrom(recordFrom(root?.data)?.error);
-  return stringFrom(error?.errormessage) ?? stringFrom(error?.message);
+  return stringFrom(error?.errormessage) ?? stringFrom(error?.message) ?? stringFrom(error?.reason);
 }
 
 function stringFrom(value: unknown): string | undefined {
@@ -755,4 +734,26 @@ function currencyFrom(value: unknown): Currency | undefined {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isExplicitlyUnavailable(text: string): boolean {
+  return /wrong.*tourid|obsolete|sold|тур продан|нет мест|тур не найден/i.test(text);
+}
+
+function mergeSearchSnapshots(previous: unknown, current: unknown): unknown {
+  const prior = recordFrom(recordFrom(previous)?.data);
+  const root = recordFrom(current);
+  const next = recordFrom(root?.data);
+  if (!next) return previous ?? current;
+  if (!prior) return current;
+  const blocks = new Map<string, unknown>();
+  for (const block of [...(Array.isArray(prior.block) ? prior.block : []), ...(Array.isArray(next.block) ? next.block : [])]) {
+    const row = recordFrom(block);
+    blocks.set(stringFrom(row?.id) ?? JSON.stringify(block), block);
+  }
+  const decode: Record<string, unknown> = { ...recordFrom(prior.decode) };
+  for (const [key, value] of Object.entries(recordFrom(next.decode) ?? {})) {
+    decode[key] = recordFrom(value) ? { ...recordFrom(decode[key]), ...recordFrom(value) } : value;
+  }
+  return { ...root, data: { ...prior, ...next, block: [...blocks.values()], decode } };
 }

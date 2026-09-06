@@ -72,11 +72,11 @@ export class TelegramNotifier {
       room ? `🛏 Room: ${escapeHtml(room)}` : undefined,
       deal.meal ? `🍽 Meal: ${escapeHtml(String(deal.meal))}` : undefined,
       deal.operator ? `✈️ Operator: ${escapeHtml(deal.operator)}` : undefined,
-      deal.availabilityText ? `🟢 Status: ${escapeHtml(deal.availabilityText)}` : undefined,
+      deal.availabilityText ? `${deal.availabilityText.includes("не подтверждены") ? "⚠️" : "🟢"} Status: ${escapeHtml(deal.availabilityText)}` : undefined,
       tourId || hotelId ? `IDs: ${escapeHtml([tourId ? `tour ${tourId}` : "", hotelId ? `hotel ${hotelId}` : ""].filter(Boolean).join(", "))}` : undefined,
       `💰 Price: <b>${escapeHtml(this.currency.format(deal.price))}</b>`,
       "",
-      ...reasons.map((reason) => `✅ ${escapeHtml(reason)}`)
+      ...reasons.map((reason) => `${reason.includes("не подтверждены") ? "⚠️" : "✅"} ${escapeHtml(reason)}`)
     ].filter(Boolean);
 
     const tourUrl = tourUrlWithCurrency(deal.url, deal.price.currency);
@@ -620,7 +620,7 @@ function formatBestDealLine(deal: BestDealObservation, rank: number): string {
     deal.meal,
     deal.operator
   ].filter(Boolean);
-  const reasons = deal.reasons.length ? `\n✅ ${escapeHtml(deal.reasons.join("; "))}` : "";
+  const reasons = deal.reasons.length ? `\n${deal.reasons.some((reason) => reason.includes("не подтверждены")) ? "⚠️" : "✅"} ${escapeHtml(deal.reasons.join("; "))}` : "";
 
   return [
     `<b>#${rank}. ${escapeHtml(price)}</b>`,

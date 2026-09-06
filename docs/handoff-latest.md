@@ -61,3 +61,6 @@ Code/docs/tests only in GitHub; no database, secrets, dist or raw API captures.
   several relative operator booking URLs; a follow-up fix now uses only absolute
   HTTP(S) links and counts only successful deliveries. Explicit operator refusal
   is also excluded. Follow-up tests/build passed and service restarted.
+- Final post-fix cycle completed at 14:50 Moscow: 59 offers received, 47 eligible,
+  12 skipped, all 10 selected alerts successfully delivered; digest also sent.
+  No Telegram URL rejection in this cycle.

@@ -31,3 +31,5 @@
   to valid absolute URLs and accurate delivery counts. Added regression coverage.
 - Added explicit operator service refusal to unavailable classification.
 - Rebuilt and restarted with both follow-up fixes; 11 tests passed.
+- Final verification at 14:50 Moscow: 59 received / 47 eligible / 12 skipped;
+  all 10 selected alerts delivered successfully, followed by a digest.

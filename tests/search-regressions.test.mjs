@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TourvisorPublicProvider } from '../src/providers/tourvisorPublicProvider.ts';
 import { Worker } from '../src/worker.ts';
+import { bookingLinkFromRaw, TelegramNotifier } from '../src/telegram.ts';
 
 const preset = {id:'test',enabled:true,title:'test',departureCity:'Minsk',departureId:57,countries:['Vietnam'],countryId:16,resorts:[],dateFrom:'2026-09-06',dateTo:'2026-10-25',nightsFrom:12,nightsTo:18,adults:2,children:0,meal:'BB',hotelStarsMin:3,budget:{amount:2700,currency:'USD'}};
 const offer = (id, amount) => ({source:'tourvisor',externalId:id,title:id,url:'https://tourvisor.ru/t/1',price:{amount,currency:'USD'},meal:'BB - Только завтрак',hotelStars:3,dateStart:'2026-09-15',nights:14});
@@ -78,4 +79,24 @@ test('timeout returns received blocks as partial results',async()=>{
   const p=new TourvisorPublicProvider({modsearchUrl:'https://example.com',modresultUrl:'https://example.com',searchTimeoutMs:0,pollIntervalMs:0});
   p.fetchResult=async()=>({data:{status:{progress:50},block:[{id:1}]}});
   const result=await p.pollResults('123');assert.equal(result.data.block.length,1);assert.equal(result.data.status.progress,50);
+});
+
+
+test('explicit operator refusal is unavailable even with booking controls',async()=>{
+  const p=provider();
+  mockAvailability(p,{data:{error:{reason:'Нет дополнительных сведений по запрошенному туру. Оператор сообщил о невозможности обслуживания запрошенного тура'}}});
+  assert.equal((await p.resolveDealLink(offer('tourvisor:123',2307))).isAvailable,false);
+});
+
+
+test('relative booking links fall back to an absolute booking-center URL',()=>{
+  assert.equal(bookingLinkFromRaw({share:{operatorlink:'/Basket?tour=1'},client:{bookcenters:[{link:'https://tourvisor.ru/book'}]}}),'https://tourvisor.ru/book');
+  assert.equal(bookingLinkFromRaw({share:{operatorlink:'/Basket'},client:{operatorlink:'javascript:alert(1)',bookcenters:[{link:'/relative'}]}}),undefined);
+});
+
+test('Telegram delivery counts successes, not failed attempts',async()=>{
+  const fake={dealSubscriberChatIds:()=>['one','two'],bot:{telegram:{sendMessage:async id=>{if(id==='one')throw {response:{error_code:400}};}}},storage:{deactivateSubscriber:()=>{}}};
+  assert.equal(await TelegramNotifier.prototype.sendToDealSubscribers.call(fake,'test',{}),1);
+  fake.dealSubscriberChatIds=()=>['one'];
+  assert.equal(await TelegramNotifier.prototype.sendToDealSubscribers.call(fake,'test',{}),0);
 });

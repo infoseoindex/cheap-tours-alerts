@@ -105,11 +105,15 @@ export class Worker {
       this.storage.recordDealObservation(preset.id, deal, decision.priceRub, decision.reasons);
     }
     const selected = maxAlerts > 0 ? candidates.slice(0, maxAlerts) : candidates;
+    let sent = 0;
     for (const { deal, decision } of selected) {
-      await this.notifier.sendDeal(preset, deal, decision.reasons);
-      this.storage.markAlertSent(preset.id, deal, decision.reasons);
+      const delivered = await this.notifier.sendDeal(preset, deal, decision.reasons);
+      if (delivered !== false) {
+        this.storage.markAlertSent(preset.id, deal, decision.reasons);
+        sent += 1;
+      }
     }
-    console.log(`Preset ${preset.id}: received=${deals.length}, eligible=${candidates.length}, skipped=${skipped}, sent ${selected.length} deal alerts`);
+    console.log(`Preset ${preset.id}: received=${deals.length}, eligible=${candidates.length}, skipped=${skipped}, sent ${sent} deal alerts`);
     if (candidates.length === 0) await this.sendNoDealReportIfDue(preset, deals);
 
     await this.sendBestDigestIfDue();

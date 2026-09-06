@@ -737,7 +737,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function isExplicitlyUnavailable(text: string): boolean {
-  return /wrong.*tourid|obsolete|sold|тур продан|нет мест|тур не найден/i.test(text);
+  return /wrong.*tourid|obsolete|sold|тур продан|нет мест|тур не найден|невозможности обслуживания запрошенного тура/i.test(text);
 }
 
 function mergeSearchSnapshots(previous: unknown, current: unknown): unknown {

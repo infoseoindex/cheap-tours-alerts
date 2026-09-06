@@ -19,7 +19,7 @@ Search reliability fixes for missing cheaper tours:
 - Check decoded meal, stars, dates and nights locally after resolving a card.
 - Store all eligible observations, including those beyond the immediate limit.
   Preserve uncertainty warnings in observation reasons and best digests.
-- `npm test`: eight regression cases. `npm run build`: TypeScript compilation.
+- `npm test`: eleven regression cases. `npm run build`: TypeScript compilation.
 
 ## Runtime and settings
 
@@ -51,9 +51,13 @@ Code/docs/tests only in GitHub; no database, secrets, dist or raw API captures.
 
 ## Deployment verification
 
-- Tests: 8/8 passed; `npm run build` passed.
+- Tests: 11/11 passed; `npm run build` passed.
 - Live search completed both requests at 100%; the retry added a late operator
   block and merged output contained 113 unique offers. The user's exact offer
   remained absent from this search despite its accessible direct card.
 - Service restarted successfully at 14:42 Moscow on 2026-09-06 and reported
   active. First automatic scan started; inspect logs for completed-cycle totals.
+- First automatic cycle: 73 received, 48 eligible, 25 skipped. Telegram rejected
+  several relative operator booking URLs; a follow-up fix now uses only absolute
+  HTTP(S) links and counts only successful deliveries. Explicit operator refusal
+  is also excluded. Follow-up tests/build passed and service restarted.

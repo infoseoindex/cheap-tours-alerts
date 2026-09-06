@@ -500,10 +500,18 @@ These rules supersede the older sold-filter description above:
   decoded meal type. One failed card does not abort other candidates.
 - Record all eligible observations for best-tour digests, including offers
   beyond the immediate message limit. Keep sending current offers each scan.
-- Run `npm test` (eight regression cases), then `npm run build` before deploy.
+- Run `npm test` (eleven regression cases), then `npm run build` before deploy.
 
 Observed diagnostic example: short card 7621065950 / tour 99275210553110,
 Crown Nguyen Hoang Hotel, 2352 USD, Minsk–Nha Trang, 2026-09-15, 14 nights,
 BB, two adults. Main card returned booking controls, but the detail request
 returned GetDatabaseFail. A separate full search failed to receive Voyazhtur
 results. Neither technical condition proves that the tour is sold.
+
+Post-deploy checks also exposed relative operator booking URLs (`/Basket?...`)
+that caused Telegram to reject entire messages. Only absolute HTTP(S) booking
+links are now accepted; invalid operator links fall back to an absolute booking
+center link or omit the optional booking button. The Tourvisor card button stays.
+Delivery counts and sent history now require at least one successful recipient;
+failed attempts no longer count as successful tour alerts. Explicit operator
+refusal to service a tour is classified as unavailable, not a technical failure.

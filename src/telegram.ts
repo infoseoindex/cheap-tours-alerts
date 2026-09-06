@@ -55,7 +55,7 @@ export class TelegramNotifier {
     this.bot.stop(reason);
   }
 
-  async sendDeal(preset: SearchPreset, deal: TourDeal, reasons: string[]): Promise<void> {
+  async sendDeal(preset: SearchPreset, deal: TourDeal, reasons: string[]): Promise<boolean> {
     const room = rawString(deal.raw, "room");
     const tourId = rawString(deal.raw, "id");
     const hotelId = rawString(deal.raw, "hotelId");
@@ -83,7 +83,7 @@ export class TelegramNotifier {
     const buttons = [[Markup.button.url("🔎 Открыть тур / Open tour", tourUrl)]];
     if (bookingLink) buttons.push([Markup.button.url("🧾 Оформить / Book", bookingLink)]);
 
-    await this.sendToDealSubscribers(lines.join("\n"), Markup.inlineKeyboard(buttons));
+    return (await this.sendToDealSubscribers(lines.join("\n"), Markup.inlineKeyboard(buttons))) > 0;
   }
 
   async sendNoDealReport(
@@ -586,21 +586,24 @@ export class TelegramNotifier {
   private async sendToDealSubscribers(
     text: string,
     keyboard: ReturnType<typeof Markup.inlineKeyboard>
-  ): Promise<void> {
+  ): Promise<number> {
+    let delivered = 0;
     for (const chatId of this.dealSubscriberChatIds()) {
       try {
         await this.bot.telegram.sendMessage(chatId, text, {
           parse_mode: "HTML",
           ...keyboard
         });
+        delivered += 1;
         console.log(`Sent deal message to chat ${chatId}`);
       } catch (error) {
-        console.error(`Failed to send deal alert to chat ${chatId}`, error);
+        console.error(`Failed to send deal alert to chat ${chatId}: code=${telegramErrorCode(error) ?? "unknown"}`);
         if (telegramErrorCode(error) === 403) {
           this.storage.deactivateSubscriber(chatId);
         }
       }
     }
+    return delivered;
   }
 }
 
@@ -736,26 +739,26 @@ function rawString(raw: unknown, key: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function bookingLinkFromRaw(raw: unknown): string | undefined {
+export function bookingLinkFromRaw(raw: unknown): string | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const record = raw as Record<string, unknown>;
 
   const share = record.share;
   const shareOperatorLink = rawString(share, "operatorlink");
-  if (shareOperatorLink) return shareOperatorLink;
+  if (isHttpUrl(shareOperatorLink)) return shareOperatorLink;
 
   const client = record.client;
   if (!client || typeof client !== "object" || Array.isArray(client)) return undefined;
 
   const clientOperatorLink = rawString(client, "operatorlink");
-  if (clientOperatorLink) return clientOperatorLink;
+  if (isHttpUrl(clientOperatorLink)) return clientOperatorLink;
 
   const bookcenters = (client as Record<string, unknown>).bookcenters;
   if (!Array.isArray(bookcenters)) return undefined;
 
   for (const item of bookcenters) {
     const link = rawString(item, "link");
-    if (link) return link;
+    if (isHttpUrl(link)) return link;
   }
 
   return undefined;
@@ -784,4 +787,14 @@ function escapeHtml(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function isHttpUrl(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && Boolean(url.hostname);
+  } catch {
+    return false;
+  }
 }
